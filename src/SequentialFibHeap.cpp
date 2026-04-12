@@ -13,12 +13,13 @@ SequentialFibHeap::~SequentialFibHeap() {
 
 bool   SequentialFibHeap::isEmpty() const { return size_ == 0; }
 size_t SequentialFibHeap::size()    const { return size_; }
+FibNode* SequentialFibHeap::min() const { return min_node_; }
 
 /**
  * insert: O(1) amortized
  * Allocate space for a new Node, insert it after min
  */
-void SequentialFibHeap::insert(int value) {
+FibNode* SequentialFibHeap::insert(int value) {
     FibNode* node = new FibNode(value);
     if (min_node_ == nullptr) {
         node->left = node;
@@ -34,6 +35,7 @@ void SequentialFibHeap::insert(int value) {
             min_node_ = node;
     }
     size_++;
+    return node;
 }
 
 /**
@@ -47,18 +49,22 @@ int SequentialFibHeap::deleteMin() {
 
     // Promote all children of z into the root list
     if (z->child) {
+        std::vector<FibNode*> children;
         FibNode* child = z->child;
         do {
-            FibNode* next = child->right;
-            child->left->right = child->right;
-            child->right->left = child->left;
-            child->left = min_node_;
-            child->right = min_node_->right;
-            min_node_->right->left = child;
-            min_node_->right = child;
-            child->parent = nullptr;
-            child = next;
+            children.push_back(child);
+            child = child->right;
         } while (child != z->child);
+
+        for (FibNode* current : children) {
+            current->left->right = current->right;
+            current->right->left = current->left;
+            current->left = min_node_;
+            current->right = min_node_->right;
+            min_node_->right->left = current;
+            min_node_->right = current;
+            current->parent = nullptr;
+        }
     }
 
     // Remove z from root list

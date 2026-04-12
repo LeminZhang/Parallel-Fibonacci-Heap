@@ -21,7 +21,8 @@ public:
 
     size_t size()    const;
     bool isEmpty() const;
-    void insert(int value);                      // O(1)
+    FibNode* min() const;
+    FibNode* insert(int value);                  // O(1)
     void decreaseKey(FibNode* node, int newVal); // O(1)
     int  deleteMin();                            // O(log n)
 
