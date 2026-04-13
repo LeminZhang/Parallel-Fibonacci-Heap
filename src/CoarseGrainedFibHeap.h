@@ -26,9 +26,9 @@ public:
     size_t size() const;
     bool isEmpty() const;
     FibNode* min() const;
-    FibNode* insert(int value);
+    FibNode* insert(int handle_id, int value);
     void decreaseKey(FibNode* node, int newVal);
-    int deleteMin();
+    DeleteMinResult deleteMin();
 
 private:
     mutable std::mutex mutex_;

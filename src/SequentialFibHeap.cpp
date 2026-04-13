@@ -19,8 +19,8 @@ FibNode* SequentialFibHeap::min() const { return min_node_; }
  * insert: O(1) amortized
  * Allocate space for a new Node, insert it after min
  */
-FibNode* SequentialFibHeap::insert(int value) {
-    FibNode* node = new FibNode(value);
+FibNode* SequentialFibHeap::insert(int handle_id, int value) {
+    FibNode* node = new FibNode(value, handle_id);
     if (min_node_ == nullptr) {
         node->left = node;
         node->right = node;
@@ -42,10 +42,10 @@ FibNode* SequentialFibHeap::insert(int value) {
  * deleteMin: O(log n) amortized
  * Delete the min node, move its children to root list and consolidate
  */
-int SequentialFibHeap::deleteMin() {
+DeleteMinResult SequentialFibHeap::deleteMin() {
     if (!min_node_) throw std::runtime_error("Heap is empty");
     FibNode* z = min_node_;
-    int min_val = z->value;
+    DeleteMinResult result{z->value, z->handle_id};
 
     // Promote all children of z into the root list
     if (z->child) {
@@ -80,7 +80,7 @@ int SequentialFibHeap::deleteMin() {
 
     size_--;
     delete z;
-    return min_val;
+    return result;
 }
 
 /**

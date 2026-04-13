@@ -4,15 +4,17 @@ LDFLAGS ?=
 
 SRC_DIR := src
 TEST_DIR := tests
+BENCH_DIR := bench
 BUILD_DIR := build
 
 SEQUENTIAL_TEST_BIN := $(BUILD_DIR)/SequentialFibHeapTest.exe
 COARSE_TEST_BIN := $(BUILD_DIR)/CoarseGrainedFibHeapTest.exe
+BENCHMARK_BIN := $(BUILD_DIR)/benchmark.exe
 TEST_BINS := $(SEQUENTIAL_TEST_BIN) $(COARSE_TEST_BIN)
 
-.PHONY: all test clean
+.PHONY: all test benchmark clean
 
-all: $(TEST_BINS)
+all: $(TEST_BINS) $(BENCHMARK_BIN)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -23,9 +25,14 @@ $(SEQUENTIAL_TEST_BIN): $(TEST_DIR)/SequentialFibHeapTest.cpp $(SRC_DIR)/Sequent
 $(COARSE_TEST_BIN): $(TEST_DIR)/CoarseGrainedFibHeapTest.cpp $(SRC_DIR)/CoarseGrainedFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
+$(BENCHMARK_BIN): $(BENCH_DIR)/benchmark.cpp $(SRC_DIR)/CoarseGrainedFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 test: $(TEST_BINS)
 	./$(SEQUENTIAL_TEST_BIN)
 	./$(COARSE_TEST_BIN)
+
+benchmark: $(BENCHMARK_BIN)
 
 clean:
 	rm -rf $(BUILD_DIR)

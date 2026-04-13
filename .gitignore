@@ -22,3 +22,6 @@ compile_commands.json
 *.swo
 Thumbs.db
 .DS_Store
+
+# Test result
+*.txt

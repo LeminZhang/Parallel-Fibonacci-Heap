@@ -2,6 +2,11 @@
 #include "FibNode.h"
 #include <cstddef>
 
+struct DeleteMinResult {
+    int value;
+    int handle_id;
+};
+
 /**
  * Sequential Fibonacci Heap (int keys).
  * Fredman & Tarjan (1987).
@@ -22,9 +27,9 @@ public:
     size_t size()    const;
     bool isEmpty() const;
     FibNode* min() const;
-    FibNode* insert(int value);                  // O(1)
+    FibNode* insert(int handle_id, int value);   // O(1)
     void decreaseKey(FibNode* node, int newVal); // O(1)
-    int  deleteMin();                            // O(log n)
+    DeleteMinResult deleteMin();                 // O(log n)
 
 private:
     FibNode* min_node_;

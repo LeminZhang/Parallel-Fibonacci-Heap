@@ -17,9 +17,9 @@ FibNode* CoarseGrainedFibHeap::min() const {
     return heap_.min();
 }
 
-FibNode* CoarseGrainedFibHeap::insert(int value) {
+FibNode* CoarseGrainedFibHeap::insert(int handle_id, int value) {
     std::lock_guard<std::mutex> lock(mutex_);
-    return heap_.insert(value);
+    return heap_.insert(handle_id, value);
 }
 
 void CoarseGrainedFibHeap::decreaseKey(FibNode* node, int newVal) {
@@ -27,7 +27,7 @@ void CoarseGrainedFibHeap::decreaseKey(FibNode* node, int newVal) {
     heap_.decreaseKey(node, newVal);
 }
 
-int CoarseGrainedFibHeap::deleteMin() {
+DeleteMinResult CoarseGrainedFibHeap::deleteMin() {
     std::lock_guard<std::mutex> lock(mutex_);
     return heap_.deleteMin();
 }

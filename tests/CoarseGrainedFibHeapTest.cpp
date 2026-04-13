@@ -20,7 +20,7 @@ void test_parallel_insert_delete() {
         insert_workers.emplace_back([&heap, tid]() {
             const int base = tid * kValuesPerThread;
             for (int i = 0; i < kValuesPerThread; ++i) {
-                heap.insert(base + i);
+                heap.insert(base + i, base + i);
             }
         });
     }
@@ -40,8 +40,8 @@ void test_parallel_insert_delete() {
         delete_workers.emplace_back([&heap, &results, tid]() {
             while (true) {
                 try {
-                    int x = heap.deleteMin();
-                    results[tid].push_back(x);
+                    DeleteMinResult x = heap.deleteMin();
+                    results[tid].push_back(x.value);
                 } catch (const std::runtime_error&) {
                     break;
                 }
@@ -88,7 +88,7 @@ void test_parallel_decrease_key_ops() {
     handles.reserve(kTotalHandles);
 
     for (int i = 0; i < kTotalHandles; ++i) {
-        handles.push_back(heap.insert(1000 + i));
+        handles.push_back(heap.insert(i, 1000 + i));
     }
 
     std::vector<std::thread> workers;
@@ -112,9 +112,9 @@ void test_parallel_decrease_key_ops() {
     assert(heap.min() != nullptr);
     assert(heap.min()->value == -kTotalHandles);
 
-    int previous = heap.deleteMin();
+    int previous = heap.deleteMin().value;
     for (int count = 1; count < kTotalHandles; ++count) {
-        const int current = heap.deleteMin();
+        const int current = heap.deleteMin().value;
         assert(previous <= current);
         previous = current;
     }
