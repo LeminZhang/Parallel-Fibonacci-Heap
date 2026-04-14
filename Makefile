@@ -11,11 +11,12 @@ SEQUENTIAL_TEST_BIN := $(BUILD_DIR)/SequentialFibHeapTest.exe
 COARSE_TEST_BIN := $(BUILD_DIR)/CoarseGrainedFibHeapTest.exe
 BINARY_TEST_BIN := $(BUILD_DIR)/BinaryHeapTest.exe
 BENCHMARK_BIN := $(BUILD_DIR)/benchmark.exe
+BENCHMARK_BINARY_BIN := $(BUILD_DIR)/benchmark_binary.exe
 TEST_BINS := $(SEQUENTIAL_TEST_BIN) $(COARSE_TEST_BIN) $(BINARY_TEST_BIN)
 
 .PHONY: all test benchmark clean
 
-all: $(TEST_BINS) $(BENCHMARK_BIN)
+all: $(TEST_BINS) $(BENCHMARK_BIN) $(BENCHMARK_BINARY_BIN)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -30,6 +31,9 @@ $(BENCHMARK_BIN): $(BENCH_DIR)/benchmark.cpp $(SRC_DIR)/CoarseGrainedFibHeap.cpp
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 	
 $(BINARY_TEST_BIN): $(TEST_DIR)/BinaryHeapTest.cpp $(SRC_DIR)/BinaryHeap.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+$(BENCHMARK_BINARY_BIN): $(BENCH_DIR)/benchmark_binary.cpp $(SRC_DIR)/BinaryHeap.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 test: $(TEST_BINS)

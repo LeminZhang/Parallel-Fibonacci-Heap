@@ -19,7 +19,7 @@ struct BinaryHeapNode {
 class BinaryHeap
 {
 public:
-    BinaryHeap();
+    BinaryHeap() = default;
     ~BinaryHeap();
 
     // Disable copy
@@ -39,4 +39,6 @@ private:
 
     void bubbleUp(size_t index);
     void bubbleDown(size_t index);
+
+    mutable std::mutex mutex_;
 };

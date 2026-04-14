@@ -1,10 +1,8 @@
 #include "BinaryHeap.h"
 #include <iostream>
 
-BinaryHeap::BinaryHeap() {
-}
-
 BinaryHeap::~BinaryHeap() {
+    std::lock_guard<std::mutex> lock(mutex_);
     for (BinaryHeapNode* node : heap_data) {
         delete node;
     }
@@ -12,6 +10,7 @@ BinaryHeap::~BinaryHeap() {
 
 BinaryHeapNode* BinaryHeap::min() const
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (heap_data.empty()) {
         return nullptr;
     }
@@ -20,16 +19,19 @@ BinaryHeapNode* BinaryHeap::min() const
 
 size_t BinaryHeap::size() const
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     return heap_data.size();
 }
 
 bool BinaryHeap::isEmpty() const
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     return heap_data.empty();
 }
 
 BinaryHeapNode* BinaryHeap::insert(int handle_id, int value)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     BinaryHeapNode* newNode = new BinaryHeapNode(handle_id, value, heap_data.size());
     heap_data.push_back(newNode);
     bubbleUp(heap_data.size() - 1);
@@ -38,6 +40,7 @@ BinaryHeapNode* BinaryHeap::insert(int handle_id, int value)
 
 void BinaryHeap::decreaseKey(BinaryHeapNode* node, int newVal)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     size_t index = node->index_in_heap;
     if (newVal > node->value) {
         throw std::invalid_argument("New value is greater than current value");
@@ -48,6 +51,7 @@ void BinaryHeap::decreaseKey(BinaryHeapNode* node, int newVal)
 
 DeleteMinResult BinaryHeap::deleteMin()
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (heap_data.empty()) {
         throw std::runtime_error("Heap is empty");
     }
@@ -106,6 +110,7 @@ void BinaryHeap::bubbleDown(size_t index)
 
 void BinaryHeap::debug_print() const    
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     for (const auto& node : heap_data) {
         std::cout << "Handle ID: " << node->handle_id << ", Value: " << node->value << std::endl;
     }
