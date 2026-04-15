@@ -17,10 +17,6 @@ namespace {
 
 const int PROCTECT_WARMUP = 1000;
 
-enum class ImplType {
-    Coarse,
-};
-
 enum class OpType {
     Insert,
     DeleteMin,
@@ -28,7 +24,6 @@ enum class OpType {
 };
 
 struct BenchmarkConfig {
-    ImplType impl = ImplType::Coarse;
     float insertLoad = 1.0;
     float deleteLoad = 0.0;
     float decreaseLoad = 0.0;
@@ -61,7 +56,6 @@ struct GeneratedWorkload {
 void print_usage(const char* program_name) {
     std::cerr
         << "Usage: " << program_name
-        << " --impl coarse"
         << " --threads N"
         << " --ops N"
         << " --seed N"
@@ -74,10 +68,7 @@ BenchmarkConfig parse_args(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
 
-        if (arg == "--impl" && i + 1 < argc) {
-            if (std::string(argv[++i]) == "coarse") config.impl = ImplType::Coarse;
-            else    throw std::invalid_argument("Unknown impl type");
-        } else if (arg == "--threads" && i + 1 < argc) {
+        if (arg == "--threads" && i + 1 < argc) {
             config.threads = std::stoi(argv[++i]);
         } else if (arg == "--ops" && i + 1 < argc) {
             config.ops = std::stoi(argv[++i]);
@@ -288,14 +279,6 @@ BenchmarkResult run_benchmark(
     return run_coarse_parallel(workload, config.threads);
 }
 
-const char* print_impl(ImplType impl) {
-    switch (impl) {
-    case ImplType::Coarse:
-        return "coarse";
-    }
-    return "unknown";
-}
-
 std::string format_workload(float insert, float del, float decrease) {
     return
     std::to_string(insert) + "/" +
@@ -314,7 +297,7 @@ void print_result(
 
     std::cout
         << std::fixed << std::setprecision(3)
-        << "impl=" << print_impl(config.impl)
+        << "impl=binary"
         << " workload=" << format_workload(config.insertLoad, config.deleteLoad, config.decreaseLoad)
         << " threads=" << config.threads
         << " ops=" << config.ops
