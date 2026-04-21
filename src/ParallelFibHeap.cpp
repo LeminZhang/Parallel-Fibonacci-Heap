@@ -1,5 +1,6 @@
 #include "ParallelFibHeap.h"
 #include <unistd.h>
+#include <mutex>
 
 ParallelFibHeap::ParallelFibHeap(/* args */)
 {
