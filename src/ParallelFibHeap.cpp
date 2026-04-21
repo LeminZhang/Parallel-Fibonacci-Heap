@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <mutex>
 #include <stdexcept>
+#include <algorithm> 
 
 ParallelFibHeap::ParallelFibHeap(/* args */)
 {
