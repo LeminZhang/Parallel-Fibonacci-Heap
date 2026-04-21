@@ -3,6 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <algorithm>
+#include <list>
 
 SequentialFibHeap::SequentialFibHeap()
     : min_node_(nullptr), size_(0) {}
@@ -20,7 +21,15 @@ FibNode* SequentialFibHeap::min() const { return min_node_; }
  * Allocate space for a new Node, insert it after min
  */
 FibNode* SequentialFibHeap::insert(int handle_id, int value) {
-    FibNode* node = new FibNode(value, handle_id);
+    // FibNode* node = new FibNode(value, handle_id);
+
+    // // 线程局部池（每个线程一份）
+    thread_local std::list<FibNode> tls_pool;
+
+    // 在线程局部池中就地构造一个节点
+    tls_pool.emplace_back(value, handle_id);
+    FibNode* node = &tls_pool.back(); // 地址稳定
+
     if (min_node_ == nullptr) {
         node->left = node;
         node->right = node;
