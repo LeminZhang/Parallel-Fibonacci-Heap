@@ -1,17 +1,26 @@
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Follow the paper's experiment settings
 OPS_VALUES = [10000, 100000, 1000000]
-THREAD_VALUES = [2, 4, 8, 16]
-WORKLOADS = [
-    (0.5, 0.5, 0.0),
-    (0.5, 0.3, 0.2),
-    (0.5, 0.1, 0.4),
-    (0.9, 0.05, 0.05),
+THREAD_VALUES = [1, 2, 4, 8, 16]
+INSERT_WORKLOADS = [
+    (1.0, 0.0, 0.0),
+    (0.9995, 0.0005, 0.0),
+    (0.9999, 0.0001, 0.0),
+    (0.99, 0.01, 0.0),
+    (0.95, 0.05, 0.0),
+    (0.98, 0.01, 0.01),
 ]
+DECREASE_WORKLOAD = [
+    (0.95, 0.01, 0.04),
+    (0.90, 0.01, 0.09),
+    (0.80, 0.01, 0.19),
+]
+WORKLOADS = INSERT_WORKLOADS + DECREASE_WORKLOAD
 DEFAULT_SEED = 42
 PERF_EVENTS = "cache-references,cache-misses,cycles,instructions"
 
@@ -52,7 +61,8 @@ def format_perf_metrics(metrics: dict[str, str]) -> str:
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
     benchmark_path = repo_root / "build" / "benchmark_binary.exe"
-    output_path = repo_root / "result_binary.txt"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = repo_root / f"result_binary_{timestamp}.txt"
     use_perf = "--use-perf" in sys.argv
 
     if not benchmark_path.exists():
@@ -60,13 +70,8 @@ def main() -> int:
         print("Build it first, e.g. make benchmark", file=sys.stderr)
         return 1
 
-    try:
-        with open(output_path, "x", encoding="utf-8"):
-            pass
-    except FileExistsError:
-        print(f"Output file already exists: {output_path}", file=sys.stderr)
-        print("Remove it or rename it before running this script.", file=sys.stderr)
-        return 1
+    with open(output_path, "x", encoding="utf-8"):
+        pass
 
     for ops in OPS_VALUES:
         for threads in THREAD_VALUES:

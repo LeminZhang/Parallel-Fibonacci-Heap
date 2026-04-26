@@ -10,10 +10,10 @@ BUILD_DIR := build
 SEQUENTIAL_TEST_BIN := $(BUILD_DIR)/SequentialFibHeapTest.exe
 COARSE_TEST_BIN := $(BUILD_DIR)/CoarseGrainedFibHeapTest.exe
 BINARY_TEST_BIN := $(BUILD_DIR)/BinaryHeapTest.exe
-PARALLEL_TEST_BIN := $(BUILD_DIR)/ParallelFibHeapTest.exe
+FINE_TEST_BIN := $(BUILD_DIR)/FineGrainedFibHeapTest.exe
 BENCHMARK_BIN := $(BUILD_DIR)/benchmark.exe
 BENCHMARK_BINARY_BIN := $(BUILD_DIR)/benchmark_binary.exe
-TEST_BINS := $(SEQUENTIAL_TEST_BIN) $(COARSE_TEST_BIN) $(BINARY_TEST_BIN) $(PARALLEL_TEST_BIN)
+TEST_BINS := $(SEQUENTIAL_TEST_BIN) $(COARSE_TEST_BIN) $(BINARY_TEST_BIN) $(FINE_TEST_BIN)
 
 .PHONY: all test benchmark clean
 
@@ -28,10 +28,10 @@ $(SEQUENTIAL_TEST_BIN): $(TEST_DIR)/SequentialFibHeapTest.cpp $(SRC_DIR)/Sequent
 $(COARSE_TEST_BIN): $(TEST_DIR)/CoarseGrainedFibHeapTest.cpp $(SRC_DIR)/CoarseGrainedFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-$(PARALLEL_TEST_BIN): $(TEST_DIR)/ParallelFibHeapTest.cpp $(SRC_DIR)/ParallelFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
+$(FINE_TEST_BIN): $(TEST_DIR)/FineGrainedFibHeapTest.cpp $(SRC_DIR)/FineGrainedFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-$(BENCHMARK_BIN): $(BENCH_DIR)/benchmark.cpp $(SRC_DIR)/CoarseGrainedFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
+$(BENCHMARK_BIN): $(BENCH_DIR)/benchmark.cpp $(SRC_DIR)/CoarseGrainedFibHeap.cpp $(SRC_DIR)/FineGrainedFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 	
 $(BINARY_TEST_BIN): $(TEST_DIR)/BinaryHeapTest.cpp $(SRC_DIR)/BinaryHeap.cpp | $(BUILD_DIR)
@@ -44,6 +44,7 @@ test: $(TEST_BINS)
 	./$(SEQUENTIAL_TEST_BIN)
 	./$(COARSE_TEST_BIN)
 	./$(BINARY_TEST_BIN)
+	./$(FINE_TEST_BIN)
 
 benchmark: $(BENCHMARK_BIN)
 

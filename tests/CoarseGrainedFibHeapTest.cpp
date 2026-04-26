@@ -20,7 +20,7 @@ void test_parallel_insert_delete() {
         insert_workers.emplace_back([&heap, tid]() {
             const int base = tid * kValuesPerThread;
             for (int i = 0; i < kValuesPerThread; ++i) {
-                heap.insert(base + i, base + i);
+                heap.insert(new FibNode(base + i, base + i));
             }
         });
     }
@@ -88,7 +88,7 @@ void test_parallel_decrease_key_ops() {
     handles.reserve(kTotalHandles);
 
     for (int i = 0; i < kTotalHandles; ++i) {
-        handles.push_back(heap.insert(i, 1000 + i));
+        handles.push_back(heap.insert(new FibNode(1000 + i, i)));
     }
 
     std::vector<std::thread> workers;

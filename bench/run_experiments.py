@@ -1,18 +1,30 @@
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Follow the paper's experiment settings
 OPS_VALUES = [10000, 100000, 1000000]
-THREAD_VALUES = [2, 4, 8, 16]
-WORKLOADS = [
-    (0.5, 0.5, 0.0),
-    (0.5, 0.3, 0.2),
-    (0.5, 0.1, 0.4),
-    (0.9, 0.05, 0.05),
+THREAD_VALUES = [1, 2, 4, 8, 16]
+INSERT_WORKLOADS = [
+    (1.0, 0.0, 0.0),
+    (0.9995, 0.0005, 0.0),
+    (0.9999, 0.0001, 0.0),
+    (0.99, 0.01, 0.0),
+    (0.95, 0.05, 0.0),
+    (0.98, 0.01, 0.01),
 ]
+DECREASE_WORKLOAD = [
+    (0.95, 0.01, 0.04),
+    (0.90, 0.01, 0.09),
+    (0.80, 0.01, 0.19),
+]
+WORKLOADS = INSERT_WORKLOADS + DECREASE_WORKLOAD
 DEFAULT_SEED = 42
+FINE_PROMISING_SIZE = 4
+FINE_SPILL_SECTIONS = 4
+IMPLEMENTATIONS = ["coarse", "fine"]
 PERF_EVENTS = "cache-references,cache-misses,cycles,instructions"
 
 
@@ -52,7 +64,8 @@ def format_perf_metrics(metrics: dict[str, str]) -> str:
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
     benchmark_path = repo_root / "build" / "benchmark.exe"
-    output_path = repo_root / "result.txt"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = repo_root / f"result_{timestamp}.txt"
     use_perf = "--use-perf" in sys.argv
 
     if not benchmark_path.exists():
@@ -60,61 +73,66 @@ def main() -> int:
         print("Build it first, e.g. make benchmark", file=sys.stderr)
         return 1
 
-    try:
-        with open(output_path, "x", encoding="utf-8"):
-            pass
-    except FileExistsError:
-        print(f"Output file already exists: {output_path}", file=sys.stderr)
-        print("Remove it or rename it before running this script.", file=sys.stderr)
-        return 1
+    with open(output_path, "x", encoding="utf-8"):
+        pass
 
     for ops in OPS_VALUES:
         for threads in THREAD_VALUES:
             for insert_ratio, delete_ratio, decrease_ratio in WORKLOADS:
-                print(
-                    f"Running ops={ops} threads={threads} "
-                    f"workload={insert_ratio}/{delete_ratio}/{decrease_ratio}"
-                )
+                for impl in IMPLEMENTATIONS:
+                    print(
+                        f"Running impl={impl} ops={ops} threads={threads} "
+                        f"workload={insert_ratio}/{delete_ratio}/{decrease_ratio}"
+                    )
 
-                benchmark_command = [
-                    str(benchmark_path),
-                    "--impl",
-                    "coarse",
-                    "--threads",
-                    str(threads),
-                    "--ops",
-                    str(ops),
-                    "--seed",
-                    str(DEFAULT_SEED),
-                    "--workload",
-                    str(insert_ratio),
-                    str(delete_ratio),
-                    str(decrease_ratio),
-                ]
-
-                command = benchmark_command
-                if use_perf:
-                    command = [
-                        "perf",
-                        "stat",
-                        "-e",
-                        PERF_EVENTS,
-                        *benchmark_command,
+                    benchmark_command = [
+                        str(benchmark_path),
+                        "--impl",
+                        impl,
+                        "--threads",
+                        str(threads),
+                        "--ops",
+                        str(ops),
+                        "--seed",
+                        str(DEFAULT_SEED),
+                        "--workload",
+                        str(insert_ratio),
+                        str(delete_ratio),
+                        str(decrease_ratio),
                     ]
+                    if impl == "fine":
+                        benchmark_command.extend(
+                            [
+                                "--promising-size",
+                                str(FINE_PROMISING_SIZE),
+                                "--spill-sections",
+                                str(FINE_SPILL_SECTIONS),
+                            ]
+                        )
 
-                completed = subprocess.run(command, capture_output=True, text=True)
+                    command = benchmark_command
+                    if use_perf:
+                        command = [
+                            "perf",
+                            "stat",
+                            "-e",
+                            PERF_EVENTS,
+                            *benchmark_command,
+                        ]
 
-                if completed.returncode != 0:
-                    print("stderr:", completed.stderr, file=sys.stderr)
-                    continue
+                    completed = subprocess.run(command, capture_output=True, text=True)
 
-                line = completed.stdout.strip()
-                if use_perf:
-                    perf_metrics = parse_perf_stat(completed.stderr)
-                    line = f"{line} {format_perf_metrics(perf_metrics)}"
+                    if completed.returncode != 0:
+                        print("stderr:", completed.stderr, file=sys.stderr)
+                        continue
 
-                with open(output_path, "a", encoding="utf-8") as f:
-                    f.write(line + "\n")
+                    line = completed.stdout.strip()
+                    if use_perf:
+                        perf_metrics = parse_perf_stat(completed.stderr)
+                        line = f"{line} {format_perf_metrics(perf_metrics)}"
+
+                    with open(output_path, "a", encoding="utf-8") as f:
+                        f.write(line + "\n")
 
     return 0
 

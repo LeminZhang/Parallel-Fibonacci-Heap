@@ -8,10 +8,10 @@ namespace {
 
 void test_insert_and_delete_min_orders_values() {
     SequentialFibHeap heap;
-    heap.insert(0, 7);
-    heap.insert(1, 3);
-    heap.insert(2, 10);
-    heap.insert(3, 1);
+    heap.insert(new FibNode(7, 0));
+    heap.insert(new FibNode(3, 1));
+    heap.insert(new FibNode(10, 2));
+    heap.insert(new FibNode(1, 3));
 
     assert(!heap.isEmpty());
     assert(heap.size() == 4);
@@ -29,9 +29,9 @@ void test_insert_and_delete_min_orders_values() {
 void test_decrease_key_updates_minimum() {
     SequentialFibHeap heap;
 
-    FibNode* a = heap.insert(0, 20);
-    FibNode* b = heap.insert(1, 8);
-    FibNode* c = heap.insert(2, 15);
+    FibNode* a = heap.insert(new FibNode(20, 0));
+    FibNode* b = heap.insert(new FibNode(8, 1));
+    FibNode* c = heap.insert(new FibNode(15, 2));
 
     assert(heap.min() == b);
 
