@@ -11,6 +11,11 @@ struct DeleteMinResult {
  * Sequential Fibonacci Heap (int keys).
  * Fredman & Tarjan (1987).
  *
+ * This is the node-oriented core implementation: callers pass FibNode*
+ * directly to insert/decreaseKey. Handle-based decreaseKey used in
+ * benchmarks is provided by the coarse/fine wrapper layers instead of
+ * the sequential heap itself.
+ *
  *   insert:      O(1)      amortized
  *   decreaseKey: O(1)      amortized
  *   deleteMin:   O(log n)  amortized
@@ -27,7 +32,7 @@ public:
     size_t size()    const;
     bool isEmpty() const;
     FibNode* min() const;
-    FibNode* insert(int handle_id, int value);   // O(1)
+    FibNode* insert(FibNode* node);              // O(1)
     void decreaseKey(FibNode* node, int newVal); // O(1)
     DeleteMinResult deleteMin();                 // O(log n)
 

@@ -4,17 +4,15 @@
 
 #include <cstddef>
 #include <mutex>
+#include <vector>
 
 /**
  * Coarse-grained thread-safe Fibonacci Heap.
  *
  * A single global mutex guards each public heap operation.
- * Returned node handles may be passed back into other heap
- * operations, but callers should not read or mutate node fields
- * directly without external synchronization. In particular,
- * min() only returns a snapshot pointer while the mutex is held;
- * the pointer should not be dereferenced concurrently with other
- * heap operations.
+ * The underlying sequential heap is still node-oriented. This wrapper
+ * adds a handle-based decreaseKey adapter for benchmark workloads by
+ * tracking the current live node pointer for each logical handle.
  */
 class CoarseGrainedFibHeap {
 public:
@@ -26,11 +24,17 @@ public:
     size_t size() const;
     bool isEmpty() const;
     FibNode* min() const;
-    FibNode* insert(int handle_id, int value);
+    FibNode* insert(FibNode* node);
     void decreaseKey(FibNode* node, int newVal);
+    void decreaseKey(int handle_id, int newVal);
     DeleteMinResult deleteMin();
 
 private:
+    // Grow the handle table on demand before indexing by handle_id.
+    void resize_handle_table(int handle_id);
+
     mutable std::mutex mutex_;
     SequentialFibHeap heap_;
+    // handle_id -> current live node for the coarse exact heap.
+    std::vector<FibNode*> current_nodes_;
 };

@@ -45,6 +45,7 @@ struct BenchmarkResult {
     int insert_ops = 0;
     int delete_ops = 0;
     int decrease_ops = 0;
+    long long delete_value_sum = 0;
 };
 
 struct GeneratedWorkload {
@@ -200,8 +201,9 @@ void execute_operation(
         break;
     }
     case OpType::DeleteMin: {
-        (void)heap.deleteMin();
+        const DeleteMinResult result = heap.deleteMin();
         local_result.delete_ops++;
+        local_result.delete_value_sum += static_cast<long long>(result.value);
         break;
     }
     case OpType::DecreaseKey: {
@@ -265,6 +267,7 @@ BenchmarkResult run_coarse_parallel(
         result.insert_ops += local_result.insert_ops;
         result.delete_ops += local_result.delete_ops;
         result.decrease_ops += local_result.decrease_ops;
+        result.delete_value_sum += local_result.delete_value_sum;
     }
 
     result.elapsed_ms =
@@ -305,6 +308,7 @@ void print_result(
         << " executed_ops=" << result.executed_ops
         << " insert_ops=" << result.insert_ops
         << " delete_ops=" << result.delete_ops
+        << " delete_value_sum=" << result.delete_value_sum
         << " decrease_ops=" << result.decrease_ops
         << " time_ms=" << result.elapsed_ms
         << " throughput_ops_per_sec=" << throughput
