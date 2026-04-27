@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="500" viewBox="0 0 980 500">
+  <rect width="980" height="500" fill="white"/>
+  <text x="490" y="28" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="bold">Fine-Grained Parameter Sensitivity (threads = 8, 1M ops, workload 0.980 / 0.010 / 0.010)</text>
+
+  <g font-family="Arial, sans-serif">
+    <text x="245" y="62" text-anchor="middle" font-size="18" font-weight="bold">Throughput (M ops/sec)</text>
+    <text x="735" y="62" text-anchor="middle" font-size="18" font-weight="bold">Returned Delete Value Sum</text>
+  </g>
+
+  <!-- Left panel -->
+  <g transform="translate(60,90)">
+    <text x="-35" y="130" transform="rotate(-90 -35 130)" font-family="Arial, sans-serif" font-size="15">spill_sections</text>
+    <text x="170" y="295" font-family="Arial, sans-serif" font-size="15" text-anchor="middle">promising_size</text>
+
+    <g font-family="Arial, sans-serif" font-size="14" fill="#222">
+      <text x="95" y="20" text-anchor="middle">4</text>
+      <text x="175" y="20" text-anchor="middle">8</text>
+      <text x="255" y="20" text-anchor="middle">16</text>
+      <text x="25" y="58" text-anchor="end">1</text>
+      <text x="25" y="118" text-anchor="end">4</text>
+      <text x="25" y="178" text-anchor="end">8</text>
+      <text x="25" y="238" text-anchor="end">16</text>
+    </g>
+
+    <rect x="50" y="30" width="80" height="50" fill="#fee5d9" stroke="#fff"/>
+    <rect x="130" y="30" width="80" height="50" fill="#fcae91" stroke="#fff"/>
+    <rect x="210" y="30" width="80" height="50" fill="#fb6a4a" stroke="#fff"/>
+    <rect x="50" y="90" width="80" height="50" fill="#fdd0c0" stroke="#fff"/>
+    <rect x="130" y="90" width="80" height="50" fill="#fcbba1" stroke="#fff"/>
+    <rect x="210" y="90" width="80" height="50" fill="#fc9272" stroke="#fff"/>
+    <rect x="50" y="150" width="80" height="50" fill="#fee0d2" stroke="#fff"/>
+    <rect x="130" y="150" width="80" height="50" fill="#fdd0c0" stroke="#fff"/>
+    <rect x="210" y="150" width="80" height="50" fill="#fcbba1" stroke="#fff"/>
+    <rect x="50" y="210" width="80" height="50" fill="#fff5f0" stroke="#fff"/>
+    <rect x="130" y="210" width="80" height="50" fill="#fee0d2" stroke="#fff"/>
+    <rect x="210" y="210" width="80" height="50" fill="#fdd0c0" stroke="#fff"/>
+
+    <g font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#222">
+      <text x="90" y="60" text-anchor="middle">3.20</text>
+      <text x="170" y="60" text-anchor="middle">4.75</text>
+      <text x="250" y="60" text-anchor="middle">6.52</text>
+      <text x="90" y="120" text-anchor="middle">2.13</text>
+      <text x="170" y="120" text-anchor="middle">2.76</text>
+      <text x="250" y="120" text-anchor="middle">3.65</text>
+      <text x="90" y="180" text-anchor="middle">1.24</text>
+      <text x="170" y="180" text-anchor="middle">1.59</text>
+      <text x="250" y="180" text-anchor="middle">2.26</text>
+      <text x="90" y="240" text-anchor="middle">0.74</text>
+      <text x="170" y="240" text-anchor="middle">0.88</text>
+      <text x="250" y="240" text-anchor="middle">1.16</text>
+    </g>
+  </g>
+
+  <!-- Right panel -->
+  <g transform="translate(550,90)">
+    <text x="-35" y="130" transform="rotate(-90 -35 130)" font-family="Arial, sans-serif" font-size="15">spill_sections</text>
+    <text x="170" y="295" font-family="Arial, sans-serif" font-size="15" text-anchor="middle">promising_size</text>
+
+    <g font-family="Arial, sans-serif" font-size="14" fill="#222">
+      <text x="95" y="20" text-anchor="middle">4</text>
+      <text x="175" y="20" text-anchor="middle">8</text>
+      <text x="255" y="20" text-anchor="middle">16</text>
+      <text x="25" y="58" text-anchor="end">1</text>
+      <text x="25" y="118" text-anchor="end">4</text>
+      <text x="25" y="178" text-anchor="end">8</text>
+      <text x="25" y="238" text-anchor="end">16</text>
+    </g>
+
+    <rect x="50" y="30" width="80" height="50" fill="#c6dbef" stroke="#fff"/>
+    <rect x="130" y="30" width="80" height="50" fill="#6baed6" stroke="#fff"/>
+    <rect x="210" y="30" width="80" height="50" fill="#2171b5" stroke="#fff"/>
+    <rect x="50" y="90" width="80" height="50" fill="#f7fbff" stroke="#fff"/>
+    <rect x="130" y="90" width="80" height="50" fill="#deebf7" stroke="#fff"/>
+    <rect x="210" y="90" width="80" height="50" fill="#c6dbef" stroke="#fff"/>
+    <rect x="50" y="150" width="80" height="50" fill="#f7fbff" stroke="#fff"/>
+    <rect x="130" y="150" width="80" height="50" fill="#eff3ff" stroke="#fff"/>
+    <rect x="210" y="150" width="80" height="50" fill="#deebf7" stroke="#fff"/>
+    <rect x="50" y="210" width="80" height="50" fill="#f7fbff" stroke="#fff"/>
+    <rect x="130" y="210" width="80" height="50" fill="#f7fbff" stroke="#fff"/>
+    <rect x="210" y="210" width="80" height="50" fill="#eff3ff" stroke="#fff"/>
+
+    <g font-family="Arial, sans-serif" font-size="12.5" font-weight="bold" fill="#222">
+      <text x="90" y="60" text-anchor="middle">1.11B</text>
+      <text x="170" y="60" text-anchor="middle">1.34B</text>
+      <text x="250" y="60" text-anchor="middle">1.54B</text>
+      <text x="90" y="120" text-anchor="middle">81.3M</text>
+      <text x="170" y="120" text-anchor="middle">283.8M</text>
+      <text x="250" y="120" text-anchor="middle">304.2M</text>
+      <text x="90" y="180" text-anchor="middle">80.2M</text>
+      <text x="170" y="180" text-anchor="middle">107.5M</text>
+      <text x="250" y="180" text-anchor="middle">220.8M</text>
+      <text x="90" y="240" text-anchor="middle">60.1M</text>
+      <text x="170" y="240" text-anchor="middle">77.7M</text>
+      <text x="250" y="240" text-anchor="middle">112.7M</text>
+    </g>
+  </g>
+
+  <g font-family="Arial, sans-serif" font-size="13" fill="#444">
+    <text x="245" y="475" text-anchor="middle">Darker red means higher throughput.</text>
+    <text x="735" y="475" text-anchor="middle">Darker blue means larger returned delete values.</text>
+  </g>
+</svg>
