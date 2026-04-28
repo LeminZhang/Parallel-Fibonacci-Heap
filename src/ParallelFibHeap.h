@@ -10,6 +10,8 @@
 #include <chrono>
 #include <iostream>
 #include <omp.h>
+#include <atomic>
+#include <cmath>
 
 using namespace std;
 
