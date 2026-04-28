@@ -10,58 +10,50 @@
 
 namespace {
 
-void local_insert(ParallelFibHeap& heap, int values_per_thread) {
-    pid_t thread_id = getpid();
-    heap.AddThread();
-    heap.protect(); // Ensure the thread's local heap is registered before proceeding
+void test_insert_and_find_min_orders_values(int num_threads = 4, int n_values = 1000000, int values_per_group = 10000) {
+    ParallelFibHeap<int> heap(num_threads);
 
-    auto start = std::chrono::high_resolution_clock::now();
+    vector<vector<int*>> test_values(n_values / values_per_group);
+    auto total_start = std::chrono::high_resolution_clock::now();
+    #pragma omp parallel
+    for (int i = 0; i < n_values / values_per_group; i++) {
+        double sum = 0;
+        for (int j = 0; j < values_per_group; j++) {
+            sum += i * values_per_group / 0.234 + j;
+        }
+        cout << "Sum for group " << i << ": " << sum << endl;
+    }
+    auto total_end = std::chrono::high_resolution_clock::now();
 
-    for (int i = 0; i < values_per_thread; ++i) {
-        heap.insert(thread_id * values_per_thread + i, i);
-        // // Do some dummy work to increase for performance debugging
-        // int j;
-        // int sum = 0;
-        // for (j = 0; j < 100; ++j) {
-        //     sum += j;
-        // }
-        // (void)sum; // Suppress unused variable warning
+    for (int i = 0; i < n_values / values_per_group; i++) {
+        for (int j = 0; j < values_per_group; j++) {
+            int* val = new int(i * values_per_group + j);
+            test_values[i].push_back(val);
+        }
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
+    // auto total_start = std::chrono::high_resolution_clock::now();
 
-    cout << "Thread " << thread_id << " inserted " << values_per_thread
-         << " values in " << duration_ms << " ms" << std::endl;
-//     FibNode* min_node = heap.min();
-//     std::cout << "Thread " << thread_id << " inserted values, current min: " << (min_node ? min_node->value : -1) << std::endl;
-}
+    // #pragma omp parallel for
+    for (int i = 0; i < n_values / values_per_group; i++) {
+        auto start = std::chrono::high_resolution_clock::now();
+        heap.insert(test_values[i]);
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
 
-void test_insert_and_find_min_orders_values(int num_threads = 4, int values_per_thread = 10000) {
-    ParallelFibHeap heap;
-    
-    // auto start = std::chrono::high_resolution_clock::now();
-
-    std::vector<std::thread> insert_workers;
-    insert_workers.reserve(num_threads);
-    for (int tid = 0; tid < num_threads; ++tid) {
-        insert_workers.emplace_back(local_insert, std::ref(heap), values_per_thread);
-    }
-    for (auto& worker : insert_workers) {
-        worker.join();
+        std::cout << "Total insert time (" << num_threads << " threads, " 
+                << values_per_group << " values each): " << duration_ms << " ms" << std::endl;
     }
 
-    // auto end = std::chrono::high_resolution_clock::now();
-    // auto duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
-
-    // std::cout << "Total insert time (" << num_threads << " threads, " 
-    //           << values_per_thread << " values each): " << duration_ms << " ms" << std::endl;
+    // auto total_end = std::chrono::high_resolution_clock::now();
+    auto total_duration_ms = std::chrono::duration<double, std::milli>(total_end - total_start).count();
+    std::cout << "Total insert time for all values: " << total_duration_ms << " ms" << std::endl;
 }
 
 }   
 
 int main() {
-    test_insert_and_find_min_orders_values(4, 10000000);
+    test_insert_and_find_min_orders_values(1, 10000000, 1000000);
     // test_decrease_key_updates_minimum();
     std::cout << "ParallelFibHeap tests passed.\n";
     return 0;

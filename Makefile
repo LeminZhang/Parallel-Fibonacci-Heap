@@ -1,5 +1,5 @@
 CXX ?= g++
-CXXFLAGS ?= -std=c++17 -Wall -Wextra -pedantic
+CXXFLAGS ?= -std=c++17 -Wall -Wextra -pedantic -fopenmp
 LDFLAGS ?=
 
 SRC_DIR := src
@@ -28,7 +28,7 @@ $(SEQUENTIAL_TEST_BIN): $(TEST_DIR)/SequentialFibHeapTest.cpp $(SRC_DIR)/Sequent
 $(COARSE_TEST_BIN): $(TEST_DIR)/CoarseGrainedFibHeapTest.cpp $(SRC_DIR)/CoarseGrainedFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-$(PARALLEL_TEST_BIN): $(TEST_DIR)/ParallelFibHeapTest.cpp $(SRC_DIR)/ParallelFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
+$(PARALLEL_TEST_BIN): $(TEST_DIR)/ParallelFibHeapTest.cpp $(SRC_DIR)/ParallelFibHeap.cpp  | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 $(BENCHMARK_BIN): $(BENCH_DIR)/benchmark.cpp $(SRC_DIR)/CoarseGrainedFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
