@@ -1,6 +1,18 @@
-CXX ?= g++
-CXXFLAGS ?= -std=c++17 -Wall -Wextra -pedantic -fopenmp
-LDFLAGS ?=
+
+# Platform detection
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S),Darwin)
+    # macOS configuration
+    CXX := clang++
+    CXXFLAGS := -std=c++17 -Wall -Wextra -pedantic -Xclang -fopenmp -I/opt/homebrew/opt/libomp/include -g -O1
+    LDFLAGS := -L/opt/homebrew/opt/libomp/lib -lomp
+else
+    # Linux and other Unix-like systems
+    CXX := g++
+    CXXFLAGS := -std=c++17 -Wall -Wextra -pedantic -fopenmp -O3
+    LDFLAGS :=
+endif
 
 SRC_DIR := src
 TEST_DIR := tests

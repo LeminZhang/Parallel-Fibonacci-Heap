@@ -9,6 +9,7 @@
 #include <memory>
 #include <chrono>
 #include <iostream>
+#include <omp.h>
 
 using namespace std;
 
@@ -17,62 +18,61 @@ struct HeapNode {
     T * value;
 
     bool marked;
+    int degree;
 
     HeapNode * left;
     HeapNode * right;
     HeapNode * child;
     HeapNode * parent;
 
-    struct RootInfo {
-        int degree;
-        mutex * root_mutex;
-        int worker_index;
-    };
-    
-    struct ChildInfo {
-        HeapNode * root;
-    };
+    mutex * root_mutex;
+    int worker_index;
 
-    union NodeInfo {
-        RootInfo root_info;
-        ChildInfo child_info;
-    } info;
-
-    HeapNode(T * val, int worker_index) : value(val), marked(false), left(this), right(this), child(nullptr), parent(nullptr) {
-        info.root_info.degree = 0;
-        info.root_info.root_mutex = new mutex();
-        info.root_info.worker_index = worker_index;
+    HeapNode(T * val, int worker_index) : value(val), marked(false), degree(0), left(this), right(this), child(nullptr), parent(nullptr) {
+        root_mutex = new mutex();
+        this->worker_index = worker_index;
     }
 
     ~HeapNode() {
         if (parent == nullptr) {
             // If this node is a root, we need to delete the mutex
-            delete info.root_info.root_mutex;
+            delete root_mutex;
         }
     }
 
     HeapNode * link(HeapNode * other) {
+        if (this == other) {
+            throw std::runtime_error("Cannot link a node to itself");
+        }
+        HeapNode * parent, * child;
         if (*(other->value) < *(this->value)) {
-            return other->link(this);
+            parent = other;
+            child = this;
         }
-        // Link other to this node
-        other->removeFromList(); // Remove other from its current list
-        other->parent = this;
-        if (this->child == nullptr) {
-            this->child = other;
-            other->left = other;
-            other->right = other;
-        } else {
-            other->left = this->child;
-            other->right = this->child->right;
-            this->child->right->left = other;
-            this->child->right = other;
+        else {
+            parent = this;
+            child = other; 
         }
-        this->info.root_info.degree++;
-        this->marked = false;
-        other->info.child_info.root = this; // Update the root pointer for the child node
 
-        return this;
+        child->removeFromList(); // Remove child from root list
+
+        // Link other to this node
+        child->parent = parent;
+        if (parent->child == nullptr) {
+            parent->child = child;
+            child->left = child;
+            child->right = child;
+        } else {
+            // Insert child into the child list of parent
+            child->insertIntoList(parent->child);
+        }
+        parent->degree++;
+        parent->marked = false;
+        delete child->root_mutex;
+        child->root_mutex = nullptr; // Child nodes do not have their own mutex, they will use the mutex of the root node
+        child->worker_index = parent->worker_index; // Update the worker index for the child node
+
+        return parent;
     }
 
     void insertIntoList(HeapNode<T>* &list) {
@@ -96,38 +96,53 @@ struct HeapNode {
             this->right->left = this->left;
         }
     }
+
+    HeapNode * makeRoot(HeapNode<T>* &list) {
+        // Make this node a root and insert it into the given list
+        if (this->parent != nullptr) {
+            throw std::runtime_error("Only nodes with no parent can be made root");
+        }
+        this->parent->degree--; // Decrement the degree of the parent
+        this->removeFromList(); // Remove the node from its current list
+
+        this->parent = nullptr;
+        this->marked = false;
+        this->root_mutex = new mutex(); // The new root node needs to have its own mutex
+        this->insertIntoList(list);
+        return this;
+    }
 };
 
 template<typename T>
 class ParallelWorker {
 public:
-    size_t worker_size = 0;
+    size_t worker_size = 0;  // The number of trees in the root list of this worker
     HeapNode<T>* first_root = nullptr;
     mutable mutex worker_mutex;
-
-    // Delete copy and move constructors/assignment operators due to mutex
-    ParallelWorker(const ParallelWorker&) = delete;
-    ParallelWorker& operator=(const ParallelWorker&) = delete;
-    ParallelWorker(ParallelWorker&&) = delete;
-    ParallelWorker& operator=(ParallelWorker&&) = delete;
 
     ParallelWorker() = default;
     ~ParallelWorker() = default;
 
+    // Only call when worker_mutex is locked
     void insert(HeapNode<T>* node, size_t size) {
-        lock_guard<mutex> lock(worker_mutex);
-        node->insertIntoList(first_root);
+        // Merge the new node list with the existing root list
+        if (first_root == nullptr) {
+            first_root = node;
+        } else {
+            // Merge the two circular lists
+            HeapNode<T>* first_root_left = first_root->left;
+            HeapNode<T>* node_left = node->left;
+            first_root->left = node_left;
+            node_left->right = first_root;
+            node->left = first_root_left;
+            first_root_left->right = node;
+        }
+
         worker_size += size;
     }
 
     // Only call when worker_mutex is locked and node is guaranteed to be in this worker's root list
     void remove(HeapNode<T>* node) {
-        // !!! Debug
-        // Check if worker_mutex is locked
-        if (!worker_mutex.try_lock()) {
-            throw std::runtime_error("Worker mutex is not locked when calling remove");
-        }
-
         if (node == first_root) {
             if (node->right == node) {
                 first_root = nullptr;
@@ -139,65 +154,47 @@ public:
             node->removeFromList();
         }
 
+        delete node;
         worker_size--;
     }
 
     // Only call when worker_mutex is locked
-    void findMin(HeapNode<T>* &node, vector<HeapNode<T>*> &newly_consolidated, vector<size_t> &newly_consolidated_sizes) {
-        // !!! Debug
-        // Check if worker_mutex is locked
-        if (!worker_mutex.try_lock()) {
-            throw std::runtime_error("Worker mutex is not locked when calling findMin");
-        } 
-
+    void findMin(HeapNode<T>* &node, int max_degree) {
         if (first_root == nullptr) {
             node = nullptr;
             return;
         }
 
-        for (int i = 0; i < newly_consolidated.size(); i++) {
-            newly_consolidated[i] = nullptr;
-            newly_consolidated_sizes[i] = 0;
-        }
-        
         // Consolidate while finding the minimum node
 
-        int max_degree = worker_size;
         std::vector<HeapNode<T>*> table(max_degree + 1, nullptr);
         HeapNode<T>* min_node = first_root;
         HeapNode<T>* curr = first_root;
-        int count = 0;
-        do {
+        size_t original_size = worker_size;
+        for (int i = 0; i < (int)original_size; i++) {
+            HeapNode<T>* next = curr->right; // The original list
+
             if (*(curr->value) < *(min_node->value)) {
                 min_node = curr;
             }
-            if (table[curr->info.root_info.degree] == nullptr) {
-                table[curr->info.root_info.degree] = curr;
+            if (table[curr->degree] == nullptr) {
+                table[curr->degree] = curr;
             } else {
                 // We have a duplicate degree, we need to link the two trees
-                HeapNode<T>* x = curr;
-                int d = x->info.root_info.degree;
+                int d = curr->degree;
                 while (table[d] != nullptr) {
                     HeapNode<T>* y = table[d];
-                    x->link(y);
-                    newly_consolidated_sizes[x->info.root_info.worker_index]--; // We are linking two trees, so the total number of trees in the root list decreases by 1
-                    newly_consolidated_sizes[y->info.root_info.worker_index]--;
+                    curr = curr->link(y);
                     table[d] = nullptr;
                     d++;
-                    worker_size--; // We are linking two trees, so the total number of trees in the root list decreases by 1
+                    worker_size--; 
                 }
-                table[d] = x;
+                table[d] = curr;
+                first_root = curr; // Update the first root pointer to the newly linked tree, this is important for the correctness of the algorithm, otherwise we might lose access to some nodes in the root list after consolidation
             }
 
-            HeapNode<T>* next = curr->right; // The original list
-
-            curr->info.root_info.worker_index = count % newly_consolidated.size(); // Update the worker index for the node
-            curr->insertIntoList(newly_consolidated[count % newly_consolidated.size()]); // Insert the node into the new consolidated list
-            newly_consolidated_sizes[count % newly_consolidated.size()]++; // Increment the size of the consolidated list
-
             curr = next;
-            count++;
-        } while (curr != first_root);
+        }
 
         node = min_node;
     }
@@ -208,16 +205,8 @@ class ParallelFibHeap
 {
 private:
     vector<unique_ptr<ParallelWorker<T>>> workers;
-public:
-    ParallelFibHeap(int num_workers) {
-        for (int i = 0; i < num_workers; i++) {
-            workers.push_back(make_unique<ParallelWorker<T>>());
-        }
-    }
-
-    ~ParallelFibHeap() { }
-
-    HeapNode<T>* insert(vector<T*> values) {
+    atomic<size_t> total_size = 0; // The total number of trees in the root lists of all workers
+    unsigned getAvailableWorker() {
         // Find the worker with the smallest local heap size
         unsigned target_index = 0;
         size_t target_size = workers[0]->worker_size;
@@ -227,12 +216,26 @@ public:
                 target_size = workers[i]->worker_size;
             }
         }
-        cout << "Worker Selected: " << target_index << " with size: " << target_size << endl;
+        return target_index;
+    }
+public:
+    ParallelFibHeap(int num_workers) {
+        for (int i = 0; i < num_workers; i++) {
+            workers.push_back(make_unique<ParallelWorker<T>>());
+        }
+    }
+
+    ~ParallelFibHeap() { }
+
+    void insert(vector<T*> values, vector<HeapNode<T>*> &nodes) {
+        // Find the worker with the smallest local heap size
+        unsigned target_index = getAvailableWorker();
 
         // Create a whole list of new nodes for the input values
         HeapNode<T>* new_node = nullptr;
         for (const auto& val : values) {
             HeapNode<T>* node = new HeapNode<T>(val, target_index);
+            nodes.push_back(node);
             if (new_node == nullptr) {
                 new_node = node;
             } else {
@@ -244,39 +247,32 @@ public:
             }
         }
 
-        // auto start = std::chrono::high_resolution_clock::now();
-
         // Add the new node to the root list
+        workers[target_index]->worker_mutex.lock();
         workers[target_index]->insert(new_node, values.size());
+        workers[target_index]->worker_mutex.unlock();
 
-        // auto end = std::chrono::high_resolution_clock::now();
-        // auto duration_ms = std::chrono::duration<double, std::milli>(end - start).count();
-
-        // cout << "Insert time for " << values.size() << " values: " << duration_ms << " ms" << endl;
-
-        return new_node;
+        total_size += values.size();
     }
 
     int extractMin(T* & min_value) {
+        int max_deg = static_cast<int>(std::log2(static_cast<double>(total_size.load()))) + 2;
+
         // Acquire all worker mutexes to ensure a consistent view of the heap
-        for (int i = 0; i < workers.size(); i++) {
+        for (size_t i = 0; i < workers.size(); i++) {
             workers[i]->worker_mutex.lock();
         }
 
         // Find the minimum node among all workers
-        vector<vector<HeapNode<T>*>> newly_consolidated(workers.size());
-        vector<vector<size_t>> newly_consolidated_sizes(workers.size());
         vector<HeapNode<T>*> min_nodes(workers.size(), nullptr);
 
         #pragma omp parallel for num_threads(workers.size())
-        for (int i = 0; i < workers.size(); i++) {
-            newly_consolidated[i].resize(workers.size(), nullptr);
-            newly_consolidated_sizes[i].resize(workers.size(), 0);
-            workers[i]->findMin(min_nodes[i], newly_consolidated[i], newly_consolidated_sizes[i]);
+        for (size_t i = 0; i < workers.size(); i++) {
+            workers[i]->findMin(min_nodes[i], max_deg);
         }
 
         HeapNode<T>* global_min_node = nullptr;
-        for (int i = 0; i < workers.size(); i++) {
+        for (size_t i = 0; i < workers.size(); i++) {
             if (min_nodes[i] != nullptr) {
                 if (global_min_node == nullptr || *(min_nodes[i]->value) < *(global_min_node->value)) {
                     global_min_node = min_nodes[i];
@@ -295,33 +291,120 @@ public:
             return -1; // Indicate that the heap is empty
         }
 
-        // Rebuild the root list for each worker with the newly consolidated nodes
+        // Reinsert the children of the minimum node into the root list of the worker that contained the minimum node
+        if (global_min_node->child != nullptr) {
+            HeapNode<T>* child = global_min_node->child;
+            do {
+                child->parent = nullptr; // Update the parent pointer for the child node
+                child->worker_index = global_min_node->worker_index; // Update the worker index for the child node
+                child->root_mutex = new mutex(); // Child nodes that are being reinserted into the root list need to have their own mutex
+                child->marked = false; // Unmark the child node
+                child = child->right;
+            } while (child != global_min_node->child);
+    
+            workers[global_min_node->worker_index]->insert(child, global_min_node->degree); // Insert the child into the worker's root list, size is 0 because we are just reinserting existing nodes
+        }
+
+        // Remove the minimum node
+        size_t worker_index = global_min_node->worker_index;
+        workers[worker_index]->remove(global_min_node);
+
+        // Unlock all worker mutexes after the operation is done
+        for (int i = (int)workers.size() - 1; i >= 0; i--) {
+            workers[i]->worker_mutex.unlock();
+        }
+
+        total_size--; // Decrement the total size of the heap
+
+        return 0;
+    }
+
+    void decreaseKey(HeapNode<T>* node, T* new_value) {
+        unsigned worker_index = getAvailableWorker();
+        HeapNode<T>* new_list = nullptr;
+        size_t new_list_size = 0;
+
+        if (node->parent == nullptr) {
+            // Node is a root, we just need to update the value
+            node->value = new_value;
+            return;
+        }
+        else {
+            HeapNode<T>* parent = node->parent;
+            HeapNode<T>* root = node;
+            while (root->parent != nullptr) {
+                root = root->parent;
+            }
+
+            root->root_mutex->lock();
+            node->value = new_value;
+            if (*(node->value) < *(parent->value)) {
+                // We need to cut the node and move it to the root list
+                node->makeRoot(new_list);
+                new_list_size++;
+
+                while (parent != nullptr && parent->marked) {
+                    // We need to cut the parent node as well
+                    HeapNode<T>* grandparent = parent->parent;
+                    
+                    parent->makeRoot(new_list);
+                    new_list_size++;
+
+                    parent = grandparent; // Move up to the next level
+                }
+
+                if (parent != nullptr && parent->parent != nullptr) {
+                    parent->marked = true; // Mark the parent node if it is not a root
+                }
+            }
+
+            if (new_list != nullptr) {
+                workers[worker_index]->worker_mutex.lock();
+                workers[worker_index]->insert(new_list, new_list_size); 
+                workers[worker_index]->worker_mutex.unlock();
+            }
+
+            root->root_mutex->unlock();
+        }
+    }
+
+    void rebalance() {
+        // Acquire all worker mutexes to ensure a consistent view of the heap
+        for (size_t i = 0; i < workers.size(); i++) {
+            workers[i]->worker_mutex.lock();
+        }
+
+        vector<vector<HeapNode<T>*>> new_lists(workers.size(), vector<HeapNode<T>*>(workers.size(), nullptr));
+        vector<vector<size_t>> new_lists_sizes(workers.size(), vector<size_t>(workers.size(), 0));
+
         #pragma omp parallel for num_threads(workers.size())
-        for (int i = 0; i < workers.size(); i++) {
+        for (size_t i = 0; i < workers.size(); i++) {
+            int count = 0;
+            HeapNode<T>* curr = workers[i]->first_root;
+            while (curr != nullptr && count < (int)workers[i]->worker_size) {
+                HeapNode<T>* next = curr->right; // The original list
+                curr->worker_index = count % workers.size(); // Update the worker index for the current node
+                curr->insertIntoList(new_lists[curr->worker_index][i]);
+                new_lists_sizes[curr->worker_index][i]++;
+                curr = next;
+                count++;
+            }
+        }
+
+        #pragma omp parallel for num_threads(workers.size())
+        for (size_t i = 0; i < workers.size(); i++) {
             workers[i]->first_root = nullptr; // Clear the current root list
             workers[i]->worker_size = 0; // Reset the worker size
-            for (int j = 0; j < workers.size(); j++) {
-                if (newly_consolidated[j][i] != nullptr) {
-                    workers[i]->insert(newly_consolidated[j][i], newly_consolidated_sizes[j][i]); // Insert the newly consolidated node into the worker's root list, size is 0 because we are just reinserting existing nodes
+            for (size_t j = 0; j < workers.size(); j++) {
+                if (new_lists[i][j] != nullptr) {
+                    workers[i]->insert(new_lists[i][j], new_lists_sizes[i][j]); // Insert the newly consolidated node into the worker's root list, size is 0 because we are just reinserting existing nodes
                 }
             }
         }
 
-        // Reinsert the children of the minimum node into the root list of the worker that contained the minimum node
-        if (global_min_node->child != nullptr) {
-            HeapNode<T>* child = global_min_node->child;
-            workers[global_min_node->info.root_info.worker_index]->insert(child, global_min_node->info.root_info.degree); // Insert the child into the worker's root list, size is 0 because we are just reinserting existing nodes
-        }
-
-        // Remove the minimum node
-        int worker_index = global_min_node->info.root_info.worker_index;
-        workers[worker_index]->remove(global_min_node);
-
         // Unlock all worker mutexes after the operation is done
-        for (int i = workers.size() - 1; i >= 0; i--) {
+        for (int i = (int)workers.size() - 1; i >= 0; i--) {
             workers[i]->worker_mutex.unlock();
         }
-
-        return 0;
     }
 };
