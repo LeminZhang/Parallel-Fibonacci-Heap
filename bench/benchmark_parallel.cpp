@@ -34,10 +34,7 @@ void benchmark_insert() {
             if (n_op < batch_size) {
                 continue; // Skip invalid configurations where total operations is less than batch size
             }
-            // if (n_op % batch_size != 0) {
-            //     cout << "Skipping n_op=" << n_op << " because it is not a multiple of batch_size=" << batch_size << endl;
-            //     continue; // Skip configurations where total operations is not a multiple of batch size
-            // }
+
             // Get baseline with 1 thread
             vector<vector<int*>> values(n_op / batch_size, vector<int*>(batch_size));
             for (size_t i = 0; i < n_op; i++) {
@@ -47,7 +44,8 @@ void benchmark_insert() {
             ParallelFibHeap<int> baseline_heap(1);
             auto start = std::chrono::steady_clock::now();
             for (size_t i = 0; i < n_op / batch_size; i++) {
-                baseline_heap.insert(values[i]);
+                vector<HeapNode<int>*> nodes; // This vector is not used.
+                baseline_heap.insert(values[i], nodes);
             }
             auto end = std::chrono::steady_clock::now();
             baseline_time_ms = std::chrono::duration<double, std::milli>(end - start).count();
@@ -67,7 +65,8 @@ void benchmark_insert() {
 
                 #pragma omp parallel for num_threads(threads)
                 for (size_t i = 0; i < n_op / batch_size; i++) {
-                    heap.insert(values[i]);
+                    vector<HeapNode<int>*> nodes; // This vector is not used.
+                    heap.insert(values[i], nodes);
                 }
 
                 auto end = std::chrono::steady_clock::now();

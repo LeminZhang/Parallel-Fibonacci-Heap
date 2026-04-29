@@ -243,7 +243,7 @@ public:
         }
     }
 
-    void insert(vector<T*> values) {
+    void insert(vector<T*> values, vector<HeapNode<T>*>& nodes) {
         // Find the worker with the smallest local heap size
         unsigned target_index = getAvailableWorker();
 
@@ -251,7 +251,7 @@ public:
         HeapNode<T>* new_node = nullptr;
         for (const auto& val : values) {
             HeapNode<T>* node = new HeapNode<T>(val, target_index);
-            // nodes.push_back(node);
+            nodes.push_back(node);
             if (new_node == nullptr) {
                 new_node = node;
             } else {
