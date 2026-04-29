@@ -227,9 +227,23 @@ public:
         }
     }
 
-    ~ParallelFibHeap() { }
+    ~ParallelFibHeap() {
+        // Delete all nodes in the heap
+        for (size_t i = 0; i < workers.size(); i++) {
+            workers[i]->worker_mutex.lock();
+            HeapNode<T>* curr = workers[i]->first_root;
+            size_t count = 0;
+            while (curr != nullptr && count < workers[i]->worker_size) {
+                HeapNode<T>* next = curr->right; // The original list
+                delete curr;
+                curr = next;
+                count++;
+            }
+            workers[i]->worker_mutex.unlock();
+        }
+    }
 
-    void insert(vector<T*> values, vector<HeapNode<T>*> &nodes) {
+    void insert(vector<T*> values) {
         // Find the worker with the smallest local heap size
         unsigned target_index = getAvailableWorker();
 
@@ -237,7 +251,7 @@ public:
         HeapNode<T>* new_node = nullptr;
         for (const auto& val : values) {
             HeapNode<T>* node = new HeapNode<T>(val, target_index);
-            nodes.push_back(node);
+            // nodes.push_back(node);
             if (new_node == nullptr) {
                 new_node = node;
             } else {

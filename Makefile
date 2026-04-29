@@ -5,7 +5,7 @@ UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
     # macOS configuration
     CXX := clang++
-    CXXFLAGS := -std=c++17 -Wall -Wextra -pedantic -Xclang -fopenmp -I/opt/homebrew/opt/libomp/include -g -O1
+    CXXFLAGS := -std=c++17 -Wall -Wextra -pedantic -Xclang -fopenmp -I/opt/homebrew/opt/libomp/include -O3
     LDFLAGS := -L/opt/homebrew/opt/libomp/lib -lomp
 else
     # Linux and other Unix-like systems
@@ -25,11 +25,12 @@ BINARY_TEST_BIN := $(BUILD_DIR)/BinaryHeapTest.exe
 PARALLEL_TEST_BIN := $(BUILD_DIR)/ParallelFibHeapTest.exe
 BENCHMARK_BIN := $(BUILD_DIR)/benchmark.exe
 BENCHMARK_BINARY_BIN := $(BUILD_DIR)/benchmark_binary.exe
+BENCHMARK_PARALLEL_BIN := $(BUILD_DIR)/benchmark_parallel.exe
 TEST_BINS := $(SEQUENTIAL_TEST_BIN) $(COARSE_TEST_BIN) $(BINARY_TEST_BIN) $(PARALLEL_TEST_BIN)
 
 .PHONY: all test benchmark clean
 
-all: $(TEST_BINS) $(BENCHMARK_BIN) $(BENCHMARK_BINARY_BIN)
+all: $(TEST_BINS) $(BENCHMARK_BIN) $(BENCHMARK_BINARY_BIN) $(BENCHMARK_PARALLEL_BIN)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -50,6 +51,9 @@ $(BINARY_TEST_BIN): $(TEST_DIR)/BinaryHeapTest.cpp $(SRC_DIR)/BinaryHeap.cpp | $
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 $(BENCHMARK_BINARY_BIN): $(BENCH_DIR)/benchmark_binary.cpp $(SRC_DIR)/BinaryHeap.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+$(BENCHMARK_PARALLEL_BIN): $(BENCH_DIR)/benchmark_parallel.cpp $(SRC_DIR)/ParallelFibHeap.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 test: $(TEST_BINS)
