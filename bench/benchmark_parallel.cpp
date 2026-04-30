@@ -154,7 +154,7 @@ void benchmark_extract_min() {
             << " batch_size=" << batch_size
             << " threads=1"
             << " time_ms=" << baseline_time_ms
-            << " Mops=" << n_op / (baseline_time_ms / 1000.0) / 1000000.0
+            << " M nodes per sec=" << n_op / (baseline_time_ms / 1000.0) / 1000000.0
             << endl;
 
         // Test with multiple threads
@@ -173,7 +173,7 @@ void benchmark_extract_min() {
                 << " batch_size=" << batch_size
                 << " threads=" << threads
                 << " time_ms=" << time_ms
-                << " Mops=" << n_op / (time_ms / 1000.0) / 1000000.0
+                << " M nodes per sec=" << n_op / (time_ms / 1000.0) / 1000000.0
                 << " speedup=" << speedup
                 << endl; 
         }
@@ -201,14 +201,14 @@ double test_decrease_key(vector<int> values, int num_threads = 4, int batch_size
     auto decrease_start = std::chrono::high_resolution_clock::now();
     #pragma omp parallel for num_threads(num_threads)
     for (int i = 0; i < (int)values.size() / batch_size; i++) {
-        for (int j = 0; j < batch_size; j+=2) {
+        for (int j = 0; j < batch_size; j++) {
             heap.obtainMutexesForDecreaseKey(nodes[i][j]); // Obtain necessary mutexes for decrease key operation
         }
     }
     #pragma omp parallel for num_threads(num_threads)
     for (int i = 0; i < (int)values.size() / batch_size; i++) {
-        for (int j = 0; j < batch_size; j+=2) {
-            *(nodes[i][j]->value) = -1;
+        for (int j = 0; j < batch_size; j++) {
+            *(nodes[i][j]->value) = -values[i * batch_size + j];
             heap.decreaseKey(nodes[i][j]);
         }
     }
