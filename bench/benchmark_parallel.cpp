@@ -56,6 +56,7 @@ void benchmark_insert() {
                 << " batch_size=" << batch_size
                 << " threads=1"
                 << " time_ms=" << baseline_time_ms
+                << " MMops=" << n_op / (baseline_time_ms / 1000.0) / 1000000.0
                 << endl;
 
             // Get speedup with multiple threads
@@ -78,6 +79,7 @@ void benchmark_insert() {
                     << " batch_size=" << batch_size
                     << " threads=" << threads
                     << " time_ms=" << time_ms
+                    << " MMops=" << n_op / (time_ms / 1000.0) / 1000000.0
                     << " speedup=" << speedup
                     << endl;
             }
@@ -152,6 +154,7 @@ void benchmark_extract_min() {
             << " batch_size=" << batch_size
             << " threads=1"
             << " time_ms=" << baseline_time_ms
+            << " Mops=" << n_op / (baseline_time_ms / 1000.0) / 1000000.0
             << endl;
 
         // Test with multiple threads
@@ -170,6 +173,7 @@ void benchmark_extract_min() {
                 << " batch_size=" << batch_size
                 << " threads=" << threads
                 << " time_ms=" << time_ms
+                << " Mops=" << n_op / (time_ms / 1000.0) / 1000000.0
                 << " speedup=" << speedup
                 << endl; 
         }
@@ -249,6 +253,7 @@ void benchmark_decrease_key() {
             << " batch_size=" << batch_size
             << " threads=1"
             << " time_ms=" << baseline_time_ms
+            << " Mops=" << n_op / (baseline_time_ms / 1000.0) / 1000000.0
             << endl;
 
         // Test with multiple threads
@@ -267,6 +272,7 @@ void benchmark_decrease_key() {
                 << " batch_size=" << batch_size
                 << " threads=" << threads
                 << " time_ms=" << time_ms
+                << " Mops=" << n_op / (time_ms / 1000.0) / 1000000.0
                 << " speedup=" << speedup
                 << endl; 
         }
