@@ -96,7 +96,7 @@ def draw_heatmap(data, n_threads):
 def main():
     parser = argparse.ArgumentParser(description="Draw speedup heatmap from input file.")
     parser.add_argument("--input", required=True, help="Path to input data file")
-    parser.add_argument("--threads", type=int, choices=[2,4,8], required=True,
+    parser.add_argument("--threads", type=int, choices=[2,4,6,8], required=True,
                         help="Which n_threads heatmap to draw")
 
     args = parser.parse_args()
