@@ -89,18 +89,100 @@ void benchmark_insert() {
     }
 }
 
+double test_insert_and_find_min_orders_values(vector<int> values, int num_threads = 4, int batch_size = 1000) {
+    ParallelFibHeap<int> heap(num_threads);
+
+    vector<vector<int*>> test_values(values.size() / batch_size);
+    vector<vector<HeapNode<int>*>> nodes(values.size() / batch_size);
+
+    for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        for (int j = 0; j < batch_size; j++) {
+            int* val = new int(values[i * batch_size + j]);
+            test_values[i].push_back(val); // Insert values to test the heap property
+        }
+    }
+
+    #pragma omp parallel for num_threads(num_threads)
+    for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        heap.insert(test_values[i], nodes[i]);
+    }
+
+    int *min_value = new int(0);
+
+    auto total_start = std::chrono::high_resolution_clock::now();
+    heap.extractMin(min_value);
+    auto total_end = std::chrono::high_resolution_clock::now();
+    auto total_duration_ms = std::chrono::duration<double, std::milli>(total_end - total_start).count();
+
+    for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        for (int j = 0; j < batch_size; j++) {
+            delete test_values[i][j];
+        }
+    }
+
+    return total_duration_ms;
+}
+
+void benchmark_extract_min() {
+    vector<int> n_threads = {2, 4, 8};
+    vector<size_t> n_ops = {100, 10000, 100000, 1000000};
+    const int iterations = 10;
+    const int warmup_iterations = 3;
+    const int batch_size = 100;
+
+    for (size_t n_op : n_ops) {
+        // Baseline with 1 thread
+        vector<int> values(n_op);
+        for (size_t i = 0; i < n_op; i++) {
+            values[i] = rand() % 1000000000;
+        }
+
+        double baseline_time_ms = 0.0;
+        for (int iter = 0; iter < warmup_iterations; iter++) {
+            test_insert_and_find_min_orders_values(values, 1, batch_size);
+        }
+        for (int iter = 0; iter < iterations; iter++) {
+            baseline_time_ms += test_insert_and_find_min_orders_values(values, 1, batch_size);
+        }
+        baseline_time_ms /= iterations; // Average over iterations
+        cout <<
+            " number of operations=" << n_op
+            << " batch_size=" << batch_size
+            << " threads=1"
+            << " time_ms=" << baseline_time_ms
+            << endl;
+
+        // Test with multiple threads
+        for (int threads : n_threads) {
+            double time_ms = 0.0;
+            for (int iter = 0; iter < warmup_iterations; iter++) {
+                test_insert_and_find_min_orders_values(values, threads, batch_size);
+            }
+            for (int iter = 0; iter < iterations; iter++) {
+                time_ms += test_insert_and_find_min_orders_values(values, threads, batch_size);
+            }
+            time_ms /= iterations; // Average over iterations
+            double speedup = baseline_time_ms / time_ms;
+            cout <<
+                " number of operations=" << n_op
+                << " batch_size=" << batch_size
+                << " threads=" << threads
+                << " time_ms=" << time_ms
+                << " speedup=" << speedup
+                << endl; 
+        }
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-    benchmark_insert();
-    // try {
-    //     const BenchmarkConfig config = parse_args(argc, argv);
-    //     const BenchmarkResult result = run_benchmark(config);
-    //     print_result(config, result);
-    //     return 0;
-    // } catch (const std::exception& ex) {
-    //     print_usage(argv[0]);
-    //     std::cerr << "Error: " << ex.what() << '\n';
-    //     return 1;
-    // }
+    // benchmark_insert();
+    benchmark_extract_min();
+    
+    
+    // test_insert_and_find_min_orders_values(1, 100000, 100);
+    // test_insert_and_find_min_orders_values(8, 100000, 100);
+    std::cout << "ParallelFibHeap tests passed.\n";
+    return 0;
 }

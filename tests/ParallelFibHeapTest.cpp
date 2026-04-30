@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <vector>
 #include <chrono>
+#include <random>
 
 namespace {
 
@@ -18,21 +19,21 @@ void test_insert_and_find_min_orders_values(int num_threads = 4, int n_values = 
 
     for (int i = 0; i < n_values / values_per_group; i++) {
         for (int j = 0; j < values_per_group; j++) {
-            int* val = new int(i * values_per_group + j);
-            test_values[i].push_back(val);
+            int* val = new int(rand() % 1000000000);
+            test_values[i].push_back(val); // Insert random values to test the heap property
         }
     }
-
-    auto total_start = std::chrono::high_resolution_clock::now();
 
     #pragma omp parallel for num_threads(num_threads)
     for (int i = 0; i < n_values / values_per_group; i++) {
         heap.insert(test_values[i], nodes[i]);
     }
 
-    // int *min_value = new int(0);
-    // heap.extractMin(min_value);
-    // cout << "Minimum value extracted: " << *min_value << endl;
+    int *min_value = new int(0);
+
+    auto total_start = std::chrono::high_resolution_clock::now();
+    heap.extractMin(min_value);
+    cout << "Minimum value extracted: " << *min_value << endl;
 
     // for (int g = 0; g < 10; g++) {
     //     auto decrease_start = std::chrono::high_resolution_clock::now();
@@ -59,8 +60,12 @@ void test_insert_and_find_min_orders_values(int num_threads = 4, int n_values = 
 }   
 
 int main() {
-    test_insert_and_find_min_orders_values(1, 10000000, 1000);
-    test_insert_and_find_min_orders_values(8, 10000000, 1000);
+    test_insert_and_find_min_orders_values(1, 1000000, 100);
+    test_insert_and_find_min_orders_values(1, 1000000, 100);
+    test_insert_and_find_min_orders_values(1, 1000000, 100);
+    test_insert_and_find_min_orders_values(8, 1000000, 100);
+    test_insert_and_find_min_orders_values(8, 1000000, 100);
+    test_insert_and_find_min_orders_values(8, 1000000, 100);
     std::cout << "ParallelFibHeap tests passed.\n";
     return 0;
 }

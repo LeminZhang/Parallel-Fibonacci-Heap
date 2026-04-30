@@ -90,7 +90,7 @@ def draw_heatmap(data, n_threads):
     plt.title(f"Speedup Heatmap (threads = {n_threads})")
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"heatmap_threads_{n_threads}.png")
 
 
 def main():
