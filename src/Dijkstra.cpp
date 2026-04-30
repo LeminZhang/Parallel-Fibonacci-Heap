@@ -42,6 +42,7 @@ void Graph::calculate_distances(int start_id) {
 
         #pragma omp parallel for num_threads(num_threads)
         for (const auto& edge : nearest_node->edges) {
+            parallel_affinity::pin_current_thread_to_efficiency_core();
             if (edge.to->distance_calculated) {
                 continue; // Skip if the distance to this node has already been calculated
             }
@@ -54,6 +55,7 @@ void Graph::calculate_distances(int start_id) {
         
         #pragma omp parallel for num_threads(num_threads)
         for (const auto& edge : nearest_node->edges) {
+            parallel_affinity::pin_current_thread_to_efficiency_core();
             if (edge.to->distance_calculated) {
                 continue; // Skip if the distance to this node has already been calculated
             }

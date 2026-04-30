@@ -15,6 +15,13 @@
 
 using namespace std;
 
+namespace parallel_affinity {
+
+void restrict_process_to_efficiency_cores();
+void pin_current_thread_to_efficiency_core();
+
+}  // namespace parallel_affinity
+
 template<typename T>
 struct HeapNode {
     T * value;
@@ -291,6 +298,7 @@ public:
 
         #pragma omp parallel for num_threads(workers.size())
         for (size_t i = 0; i < workers.size(); i++) {
+            parallel_affinity::pin_current_thread_to_efficiency_core();
             workers[i]->findMin(min_nodes[i], max_deg);
         }
 
@@ -415,6 +423,7 @@ public:
 
         #pragma omp parallel for num_threads(workers.size())
         for (size_t i = 0; i < workers.size(); i++) {
+            parallel_affinity::pin_current_thread_to_efficiency_core();
             int count = 0;
             HeapNode<T>* curr = workers[i]->first_root;
             while (curr != nullptr && count < (int)workers[i]->worker_size) {
