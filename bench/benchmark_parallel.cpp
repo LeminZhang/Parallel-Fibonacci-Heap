@@ -198,7 +198,15 @@ double test_decrease_key(vector<int> values, int num_threads = 4, int batch_size
     #pragma omp parallel for num_threads(num_threads)
     for (int i = 0; i < (int)values.size() / batch_size; i++) {
         for (int j = 0; j < batch_size; j++) {
-            heap.decreaseKey(nodes[i][j], new int(values[i * batch_size + j] - 1));
+            heap.obtainMutexesForDecreaseKey(nodes[i][j]); // Obtain necessary mutexes for decrease key operation
+        }
+    }
+    // auto decrease_start = std::chrono::high_resolution_clock::now();
+    #pragma omp parallel for num_threads(num_threads)
+    for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        for (int j = 0; j < batch_size; j++) {
+            *(nodes[i][j]->value) = values[i * batch_size + j] - 1;
+            heap.decreaseKey(nodes[i][j]);
         }
     }
     auto decrease_end = std::chrono::high_resolution_clock::now();
@@ -275,23 +283,23 @@ int main(int argc, char** argv) {
     // Save original cout buffer
     std::streambuf* original_cout = std::cout.rdbuf();
     
-    // ===== Run benchmark_insert =====
-    {
-        std::ofstream insert_file("benchmark_result/insert.txt");
-        std::cout.rdbuf(insert_file.rdbuf());
-        std::cout << "===== INSERT BENCHMARK =====" << std::endl;
-        benchmark_insert();
-        insert_file.close();
-    }
+    // // ===== Run benchmark_insert =====
+    // {
+    //     std::ofstream insert_file("benchmark_result/insert.txt");
+    //     std::cout.rdbuf(insert_file.rdbuf());
+    //     std::cout << "===== INSERT BENCHMARK =====" << std::endl;
+    //     benchmark_insert();
+    //     insert_file.close();
+    // }
     
-    // ===== Run benchmark_extract_min =====
-    {
-        std::ofstream extract_file("benchmark_result/extract_min.txt");
-        std::cout.rdbuf(extract_file.rdbuf());
-        std::cout << "===== EXTRACT_MIN BENCHMARK =====" << std::endl;
-        benchmark_extract_min();
-        extract_file.close();
-    }
+    // // ===== Run benchmark_extract_min =====
+    // {
+    //     std::ofstream extract_file("benchmark_result/extract_min.txt");
+    //     std::cout.rdbuf(extract_file.rdbuf());
+    //     std::cout << "===== EXTRACT_MIN BENCHMARK =====" << std::endl;
+    //     benchmark_extract_min();
+    //     extract_file.close();
+    // }
     
     // ===== Run benchmark_decrease_key =====
     {

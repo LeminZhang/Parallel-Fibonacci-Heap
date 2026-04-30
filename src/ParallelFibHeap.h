@@ -47,13 +47,13 @@ struct HeapNode {
             throw std::runtime_error("Cannot link a node to itself");
         }
         HeapNode * parent, * child;
-        if (*(other->value) < *(this->value)) {
-            parent = other;
-            child = this;
-        }
-        else {
+        if (*(this->value) < *(other->value)) {
             parent = this;
             child = other; 
+        }
+        else {
+            parent = other;
+            child = this;
         }
 
         child->removeFromList(); // Remove child from root list
@@ -99,14 +99,22 @@ struct HeapNode {
         }
     }
 
-    HeapNode * makeRoot(HeapNode<T>* &list) {
+    HeapNode * makeRoot(HeapNode<T>* &list, int worker_index) {
         // Make this node a root and insert it into the given list
-        if (this->parent != nullptr) {
-            throw std::runtime_error("Only nodes with no parent can be made root");
+        if (this->parent == nullptr) {
+            throw std::runtime_error("Only nodes with a parent can be made root");
         }
         this->parent->degree--; // Decrement the degree of the parent
+        if (this->parent->child == this) {
+            if (this->right != this) {
+                this->parent->child = this->right; // Update the child pointer of the parent if necessary
+            } else {
+                this->parent->child = nullptr;
+            }
+        }
         this->removeFromList(); // Remove the node from its current list
 
+        this->worker_index = worker_index;
         this->parent = nullptr;
         this->marked = false;
         this->root_mutex = new mutex(); // The new root node needs to have its own mutex
@@ -176,9 +184,6 @@ public:
         for (int i = 0; i < (int)original_size; i++) {
             HeapNode<T>* next = curr->right; // The original list
 
-            if (*(curr->value) < *(min_node->value)) {
-                min_node = curr;
-            }
             if (table[curr->degree] == nullptr) {
                 table[curr->degree] = curr;
             } else {
@@ -194,7 +199,9 @@ public:
                 table[d] = curr;
                 first_root = curr; // Update the first root pointer to the newly linked tree, this is important for the correctness of the algorithm, otherwise we might lose access to some nodes in the root list after consolidation
             }
-
+            if (!(*(min_node->value) < *(curr->value))) {
+                min_node = curr;
+            }
             curr = next;
         }
 
@@ -335,52 +342,65 @@ public:
         return 0;
     }
 
-    void decreaseKey(HeapNode<T>* node, T* new_value) {
+    void obtainMutexesForDecreaseKey(HeapNode<T>* node) {
+        workers[node->worker_index]->worker_mutex.lock();
+        if (node->parent == nullptr) {
+            node->root_mutex = nullptr;
+            workers[node->worker_index]->worker_mutex.unlock();
+            return;
+        }
+        HeapNode<T>* root = node;
+        while (root->parent != nullptr) {
+            root = root->parent;
+        }
+        node->root_mutex = root->root_mutex;
+        workers[node->worker_index]->worker_mutex.unlock();
+    }
+
+    void decreaseKey(HeapNode<T>* node) {
         unsigned worker_index = getAvailableWorker();
         HeapNode<T>* new_list = nullptr;
         size_t new_list_size = 0;
 
-        if (node->parent == nullptr) {
-            // Node is a root, we just need to update the value
-            node->value = new_value;
+        if (node->root_mutex == nullptr) {
             return;
         }
-        else {
-            HeapNode<T>* parent = node->parent;
-            HeapNode<T>* root = node;
-            while (root->parent != nullptr) {
-                root = root->parent;
-            }
 
-            root->root_mutex->lock();
-            node->value = new_value;
-            if (*(node->value) < *(parent->value)) {
-                // We need to cut the node and move it to the root list
-                node->makeRoot(new_list);
+        mutex* root_mutex = node->root_mutex;
+        root_mutex->lock();
+
+        HeapNode<T>* parent = node->parent;
+        if (parent == nullptr) {
+            root_mutex->unlock();
+            return;
+        }
+
+        if (*(node->value) < *(parent->value)) {
+            // We need to cut the node and move it to the root list
+            node->makeRoot(new_list, worker_index);
+            new_list_size++;
+
+            while (parent != nullptr && parent->marked) {
+                // We need to cut the parent node as well
+                HeapNode<T>* grandparent = parent->parent;
+                
+                parent->makeRoot(new_list, worker_index);
                 new_list_size++;
 
-                while (parent != nullptr && parent->marked) {
-                    // We need to cut the parent node as well
-                    HeapNode<T>* grandparent = parent->parent;
-                    
-                    parent->makeRoot(new_list);
-                    new_list_size++;
-
-                    parent = grandparent; // Move up to the next level
-                }
-
-                if (parent != nullptr && parent->parent != nullptr) {
-                    parent->marked = true; // Mark the parent node if it is not a root
-                }
+                parent = grandparent; // Move up to the next level
             }
 
-            if (new_list != nullptr) {
-                workers[worker_index]->worker_mutex.lock();
-                workers[worker_index]->insert(new_list, new_list_size); 
-                workers[worker_index]->worker_mutex.unlock();
+            if (parent != nullptr && parent->parent != nullptr) {
+                parent->marked = true; // Mark the parent node if it is not a root
             }
+        }
 
-            root->root_mutex->unlock();
+        root_mutex->unlock();
+
+        if (new_list != nullptr) {
+            workers[worker_index]->worker_mutex.lock();
+            workers[worker_index]->insert(new_list, new_list_size); 
+            workers[worker_index]->worker_mutex.unlock();
         }
     }
 
@@ -422,5 +442,9 @@ public:
         for (int i = (int)workers.size() - 1; i >= 0; i--) {
             workers[i]->worker_mutex.unlock();
         }
+    }
+
+    bool isEmpty() {
+        return total_size.load() == 0;
     }
 };
