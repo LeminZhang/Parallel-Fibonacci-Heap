@@ -11,27 +11,27 @@ from pathlib import Path
 def parse_extract_min_results(filepath):
     """Parse extract_min benchmark output file"""
     data = {
-        'ops': [],
+        'nodes': [],
         'threads': [],
         'time_ms': [],
         'speedup': []
     }
     
     pattern = re.compile(
-        r"operations=(\d+)\s+batch_size=(\d+)\s+threads=(\d+)\s+time_ms=([\d\.]+)(?:\s+speedup=([\d\.]+))?"
+        r"number of nodes=(\d+)\s+batch_size=(\d+)\s+threads=(\d+)\s+time_ms=([\d\.]+)(?:\s+speedup=([\d\.]+))?"
     )
     
     with open(filepath, 'r') as f:
         for line in f:
             match = pattern.search(line)
             if match:
-                ops = int(match.group(1))
+                nodes = int(match.group(1))
                 batch = int(match.group(2))
                 threads = int(match.group(3))
                 time_ms = float(match.group(4))
                 speedup = float(match.group(5)) if match.group(5) else None
                 
-                data['ops'].append(ops)
+                data['nodes'].append(nodes)
                 data['threads'].append(threads)
                 data['time_ms'].append(time_ms)
                 data['speedup'].append(speedup)
@@ -43,30 +43,30 @@ def plot_extract_min(data, output_dir='.'):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
     
-    # Group data by operation size
-    ops_values = sorted(set(data['ops']))
+    # Group data by node size
+    nodes_values = sorted(set(data['nodes']))
     thread_values = sorted(set(data['threads']))[1:]  # Exclude thread=1 (baseline)
     
     # ===== Speedup vs Threads (Bar Chart) =====
     fig, ax = plt.subplots(figsize=(12, 6))
     
-    width = 0.2  # Width of each bar
+    width = 0.15  # Width of each bar
     x = np.arange(len(thread_values))  # Label locations
     
-    # Plot bars for each operation size
-    for idx, op in enumerate(ops_values):
+    # Plot bars for each node size
+    for idx, nodes in enumerate(nodes_values):
         speedups = []
         for t in thread_values:
-            for i, (o, thr) in enumerate(zip(data['ops'], data['threads'])):
-                if o == op and thr == t and data['speedup'][i] is not None:
+            for i, (n, thr) in enumerate(zip(data['nodes'], data['threads'])):
+                if n == nodes and thr == t and data['speedup'][i] is not None:
                     speedups.append(data['speedup'][i])
                     break
         
         if speedups:
-            offset = width * (idx - len(ops_values) / 2 + 0.5)
-            ax.bar(x + offset, speedups, width, label=f'{op} nodes')
+            offset = width * (idx - len(nodes_values) / 2 + 0.5)
+            ax.bar(x + offset, speedups, width, label=f'{nodes} nodes')
     
-    # Add ideal speedup line
+    # Add baseline line (speedup = 1)
     ax.axhline(y=1, color='black', linestyle='--', linewidth=2, alpha=0.6, label='Baseline (1x speedup)')
     
     ax.set_xlabel('Number of Threads', fontsize=13, fontweight='bold')
@@ -95,8 +95,8 @@ if __name__ == '__main__':
     print(f"Parsing: {input_file}")
     data = parse_extract_min_results(input_file)
     
-    print(f"Found {len(data['ops'])} data points")
-    print(f"Operations: {sorted(set(data['ops']))}")
+    print(f"Found {len(data['nodes'])} data points")
+    print(f"Nodes: {sorted(set(data['nodes']))}")
     print(f"Threads: {sorted(set(data['threads']))}")
     
     plot_extract_min(data, output_dir)

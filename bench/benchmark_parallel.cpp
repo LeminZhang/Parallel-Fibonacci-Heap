@@ -17,7 +17,7 @@
 namespace {
 
 void benchmark_insert() {
-    vector<int> n_threads = {2, 4, 8};
+    vector<int> n_threads = {2, 4, 6, 8};
 
     vector<size_t> batch_sizes;
     for (int i = 0; i <= 20; i++) {

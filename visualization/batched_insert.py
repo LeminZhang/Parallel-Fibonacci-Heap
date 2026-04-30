@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 def parse_file(filename):
     pattern = re.compile(
-        r"operations=(\d+)\s+batch_size=(\d+)\s+threads=(\d+)\s+time_ms=([\d\.]+)"
+        r"number of operations=(\d+)\s+batch_size=(\d+)\s+threads=(\d+)\s+time_ms=([\d\.]+)"
     )
     data = {}
 
