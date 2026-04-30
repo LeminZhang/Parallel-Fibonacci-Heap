@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <exception>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
@@ -124,14 +125,15 @@ double test_insert_and_find_min_orders_values(vector<int> values, int num_thread
 }
 
 void benchmark_extract_min() {
-    vector<int> n_threads = {2, 4, 8};
-    vector<size_t> n_ops = {100, 10000, 100000, 1000000};
-    const int iterations = 10;
+    vector<int> n_threads = {2, 4, 6, 8};
+    vector<size_t> n_ops = {100, 1000, 10000, 100000};
+    int iterations;
     const int warmup_iterations = 3;
     const int batch_size = 100;
 
     for (size_t n_op : n_ops) {
-        // Baseline with 1 thread
+        iterations = 400000 / n_op;
+
         vector<int> values(n_op);
         for (size_t i = 0; i < n_op; i++) {
             values[i] = rand() % 1000000000;
@@ -146,7 +148,7 @@ void benchmark_extract_min() {
         }
         baseline_time_ms /= iterations; // Average over iterations
         cout <<
-            " number of operations=" << n_op
+            " number of nodes=" << n_op
             << " batch_size=" << batch_size
             << " threads=1"
             << " time_ms=" << baseline_time_ms
@@ -164,7 +166,97 @@ void benchmark_extract_min() {
             time_ms /= iterations; // Average over iterations
             double speedup = baseline_time_ms / time_ms;
             cout <<
-                " number of operations=" << n_op
+                " number of nodes=" << n_op
+                << " batch_size=" << batch_size
+                << " threads=" << threads
+                << " time_ms=" << time_ms
+                << " speedup=" << speedup
+                << endl; 
+        }
+    }
+}
+
+double test_decrease_key(vector<int> values, int num_threads = 4, int batch_size = 1000) {
+    ParallelFibHeap<int> heap(num_threads);
+
+    vector<vector<int*>> test_values(values.size() / batch_size);
+    vector<vector<HeapNode<int>*>> nodes(values.size() / batch_size);
+
+    for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        for (int j = 0; j < batch_size; j++) {
+            int* val = new int(values[i * batch_size + j]);
+            test_values[i].push_back(val); // Insert values to test the heap property
+        }
+    }
+
+    #pragma omp parallel for num_threads(num_threads)
+    for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        heap.insert(test_values[i], nodes[i]);
+    }
+
+    auto decrease_start = std::chrono::high_resolution_clock::now();
+    #pragma omp parallel for num_threads(num_threads)
+    for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        for (int j = 0; j < batch_size; j++) {
+            heap.decreaseKey(nodes[i][j], new int(values[i * batch_size + j] - 1));
+        }
+    }
+    auto decrease_end = std::chrono::high_resolution_clock::now();
+    auto decrease_duration_ms = std::chrono::duration<double, std::milli>(decrease_end - decrease_start).count();
+
+    for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        for (int j = 0; j < batch_size; j++) {
+            delete test_values[i][j];
+        }
+    }
+
+    return decrease_duration_ms;
+}
+
+void benchmark_decrease_key() {
+    vector<int> n_threads = {2, 4, 6, 8};
+    vector<size_t> n_ops = {100, 1000, 10000, 100000, 1000000};
+    int iterations;
+    const int warmup_iterations = 3;
+    const int batch_size = 100;
+
+    for (size_t n_op : n_ops) {
+        iterations = 1000000 / n_op;
+
+        // Baseline with 1 thread
+        vector<int> values(n_op);
+        for (size_t i = 0; i < n_op; i++) {
+            values[i] = rand() % 1000000000;
+        }
+
+        double baseline_time_ms = 0.0;
+        for (int iter = 0; iter < warmup_iterations; iter++) {
+            test_decrease_key(values, 1, batch_size);
+        }
+        for (int iter = 0; iter < iterations; iter++) {
+            baseline_time_ms += test_decrease_key(values, 1, batch_size);
+        }
+        baseline_time_ms /= iterations; // Average over iterations
+        cout <<
+            " number of nodes=" << n_op
+            << " batch_size=" << batch_size
+            << " threads=1"
+            << " time_ms=" << baseline_time_ms
+            << endl;
+
+        // Test with multiple threads
+        for (int threads : n_threads) {
+            double time_ms = 0.0;
+            for (int iter = 0; iter < warmup_iterations; iter++) {
+                test_decrease_key(values, threads, batch_size);
+            }
+            for (int iter = 0; iter < iterations; iter++) {
+                time_ms += test_decrease_key(values, threads, batch_size);
+            }
+            time_ms /= iterations; // Average over iterations
+            double speedup = baseline_time_ms / time_ms;
+            cout <<
+                " number of nodes=" << n_op
                 << " batch_size=" << batch_size
                 << " threads=" << threads
                 << " time_ms=" << time_ms
@@ -177,12 +269,46 @@ void benchmark_extract_min() {
 }  // namespace
 
 int main(int argc, char** argv) {
-    // benchmark_insert();
-    benchmark_extract_min();
+    // Create benchmark_result directory
+    system("mkdir -p benchmark_result");
     
+    // Save original cout buffer
+    std::streambuf* original_cout = std::cout.rdbuf();
     
-    // test_insert_and_find_min_orders_values(1, 100000, 100);
-    // test_insert_and_find_min_orders_values(8, 100000, 100);
-    std::cout << "ParallelFibHeap tests passed.\n";
+    // ===== Run benchmark_insert =====
+    {
+        std::ofstream insert_file("benchmark_result/insert.txt");
+        std::cout.rdbuf(insert_file.rdbuf());
+        std::cout << "===== INSERT BENCHMARK =====" << std::endl;
+        benchmark_insert();
+        insert_file.close();
+    }
+    
+    // ===== Run benchmark_extract_min =====
+    {
+        std::ofstream extract_file("benchmark_result/extract_min.txt");
+        std::cout.rdbuf(extract_file.rdbuf());
+        std::cout << "===== EXTRACT_MIN BENCHMARK =====" << std::endl;
+        benchmark_extract_min();
+        extract_file.close();
+    }
+    
+    // ===== Run benchmark_decrease_key =====
+    {
+        std::ofstream decrease_file("benchmark_result/decress_key.txt");
+        std::cout.rdbuf(decrease_file.rdbuf());
+        std::cout << "===== DECREASE_KEY BENCHMARK =====" << std::endl;
+        benchmark_decrease_key();
+        decrease_file.close();
+    }
+    
+    // Restore original cout
+    std::cout.rdbuf(original_cout);
+    
+    std::cout << "✓ All benchmarks completed!" << std::endl;
+    std::cout << "  - benchmark_result/insert.txt" << std::endl;
+    std::cout << "  - benchmark_result/extract_min.txt" << std::endl;
+    std::cout << "  - benchmark_result/decress_key.txt" << std::endl;
+    
     return 0;
 }
