@@ -67,6 +67,7 @@ void benchmark_insert() {
 
                 #pragma omp parallel for num_threads(threads)
                 for (size_t i = 0; i < n_op / batch_size; i++) {
+                    parallel_affinity::pin_current_thread_to_efficiency_core();
                     vector<HeapNode<int>*> nodes; // This vector is not used.
                     heap.insert(values[i], nodes);
                 }
@@ -107,6 +108,7 @@ double test_insert_and_find_min_orders_values(vector<int> values, int num_thread
 
     #pragma omp parallel for num_threads(num_threads)
     for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        parallel_affinity::pin_current_thread_to_efficiency_core();
         heap.insert(test_values[i], nodes[i]);
     }
 
@@ -195,6 +197,7 @@ double test_decrease_key(vector<int> values, int num_threads = 4, int batch_size
 
     #pragma omp parallel for num_threads(num_threads)
     for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        parallel_affinity::pin_current_thread_to_efficiency_core();
         heap.insert(test_values[i], nodes[i]);
     }
 
@@ -207,12 +210,14 @@ double test_decrease_key(vector<int> values, int num_threads = 4, int batch_size
     auto decrease_start = std::chrono::high_resolution_clock::now();
     #pragma omp parallel for num_threads(num_threads)
     for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        parallel_affinity::pin_current_thread_to_efficiency_core();
         for (int j = 0; j < batch_size; j+=2) {
             heap.obtainMutexesForDecreaseKey(nodes[i][j]); // Obtain necessary mutexes for decrease key operation
         }
     }
     #pragma omp parallel for num_threads(num_threads)
     for (int i = 0; i < (int)values.size() / batch_size; i++) {
+        parallel_affinity::pin_current_thread_to_efficiency_core();
         for (int j = 0; j < batch_size; j+=2) {
             *(nodes[i][j]->value) = -1;
             heap.decreaseKey(nodes[i][j]);
@@ -287,9 +292,11 @@ void benchmark_decrease_key() {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+int main() {
+    parallel_affinity::restrict_process_to_efficiency_cores();
+
     // Create benchmark_result directory
-    system("mkdir -p benchmark_result");
+    // system("mkdir -p benchmark_result");
     
     // Save original cout buffer
     std::streambuf* original_cout = std::cout.rdbuf();
@@ -324,7 +331,7 @@ int main(int argc, char** argv) {
     // Restore original cout
     std::cout.rdbuf(original_cout);
     
-    std::cout << "✓ All benchmarks completed!" << std::endl;
+    std::cout << "All benchmarks completed!" << std::endl;
     std::cout << "  - benchmark_result/insert.txt" << std::endl;
     std::cout << "  - benchmark_result/extract_min.txt" << std::endl;
     std::cout << "  - benchmark_result/decress_key.txt" << std::endl;
