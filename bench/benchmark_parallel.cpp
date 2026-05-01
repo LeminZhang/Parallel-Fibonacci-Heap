@@ -198,6 +198,12 @@ double test_decrease_key(vector<int> values, int num_threads = 4, int batch_size
         heap.insert(test_values[i], nodes[i]);
     }
 
+    // Insert a small value and run extract min to make sure the heap is consoildated
+    int *min_value = new int(-1);
+    vector<HeapNode<int>*> dummy_nodes; // This vector is not used.
+    heap.insert(vector<int*>{min_value}, dummy_nodes);
+    heap.extractMin(min_value);
+
     auto decrease_start = std::chrono::high_resolution_clock::now();
     #pragma omp parallel for num_threads(num_threads)
     for (int i = 0; i < (int)values.size() / batch_size; i++) {

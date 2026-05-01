@@ -5,9 +5,15 @@ Speedup vs Threads (Bar Chart)
 """
 
 import re
+import os
+import tempfile
+from pathlib import Path
+
+os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "parallel_fib_heap_matplotlib"))
+Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+
 import matplotlib.pyplot as plt
 import numpy as np
-from pathlib import Path
 
 def parse_decrease_key_results(filepath):
     """Parse decrease_key benchmark output file"""
@@ -15,11 +21,12 @@ def parse_decrease_key_results(filepath):
         'nodes': [],
         'threads': [],
         'time_ms': [],
+        'mops': [],
         'speedup': []
     }
     
     pattern = re.compile(
-        r"number of nodes=(\d+)\s+batch_size=(\d+)\s+threads=(\d+)\s+time_ms=([\d\.]+)(?:\s+speedup=([\d\.]+))?"
+        r"number of nodes=(\d+)\s+batch_size=(\d+)\s+threads=(\d+)\s+time_ms=([\d.]+)\s+Mops=([\d.]+)(?:\s+speedup=([\d.]+))?"
     )
     
     with open(filepath, 'r') as f:
@@ -30,11 +37,13 @@ def parse_decrease_key_results(filepath):
                 batch = int(match.group(2))
                 threads = int(match.group(3))
                 time_ms = float(match.group(4))
-                speedup = float(match.group(5)) if match.group(5) else None
+                mops = float(match.group(5))
+                speedup = float(match.group(6)) if match.group(6) else None
                 
                 data['nodes'].append(nodes)
                 data['threads'].append(threads)
                 data['time_ms'].append(time_ms)
+                data['mops'].append(mops)
                 data['speedup'].append(speedup)
     
     return data
@@ -42,7 +51,7 @@ def parse_decrease_key_results(filepath):
 def plot_decrease_key(data, output_dir='.'):
     """Create visualization: Speedup vs Threads (Bar Chart)"""
     output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     
     # Group data by node size
     nodes_values = sorted(set(data['nodes']))
@@ -57,15 +66,34 @@ def plot_decrease_key(data, output_dir='.'):
     # Plot bars for each node size
     for idx, nodes in enumerate(nodes_values):
         speedups = []
+        mops_values = []
         for t in thread_values:
+            value = np.nan
+            mops = np.nan
             for i, (n, thr) in enumerate(zip(data['nodes'], data['threads'])):
                 if n == nodes and thr == t and data['speedup'][i] is not None:
-                    speedups.append(data['speedup'][i])
+                    value = data['speedup'][i]
+                    mops = data['mops'][i]
                     break
+            speedups.append(value)
+            mops_values.append(mops)
         
-        if speedups:
-            offset = width * (idx - len(nodes_values) / 2 + 0.5)
-            ax.bar(x + offset, speedups, width, label=f'{nodes} nodes')
+        offset = width * (idx - len(nodes_values) / 2 + 0.5)
+        bars = ax.bar(x + offset, speedups, width, label=f'{nodes} nodes')
+        for bar, mops in zip(bars, mops_values):
+            if np.isnan(mops):
+                continue
+            height = bar.get_height()
+            ax.annotate(
+                f'{mops:.1f} Mops',
+                xy=(bar.get_x() + bar.get_width() / 2, height),
+                xytext=(0, 3),
+                textcoords='offset points',
+                ha='center',
+                va='bottom',
+                rotation=90,
+                fontsize=7,
+            )
     
     # Add baseline line (speedup = 1)
     ax.axhline(y=1, color='black', linestyle='--', linewidth=2, alpha=0.6, label='Baseline (1x speedup)')
@@ -77,17 +105,18 @@ def plot_decrease_key(data, output_dir='.'):
     ax.set_xticklabels(thread_values)
     ax.legend(fontsize=11, loc='best')
     ax.grid(True, alpha=0.3, axis='y')
+    ax.margins(y=0.2)
     plt.tight_layout()
     plt.savefig(output_dir / 'decrease_key_speedup_vs_threads.png', dpi=150)
-    print(f"✓ Saved: {output_dir / 'decrease_key_speedup_vs_threads.png'}")
+    print(f"Saved: {output_dir / 'decrease_key_speedup_vs_threads.png'}")
     plt.close()
 
 if __name__ == '__main__':
     import sys
     
     # Use input file from command line or default
-    input_file = sys.argv[1] if len(sys.argv) > 1 else 'benchmark_result/decress_key.txt'
-    output_dir = sys.argv[2] if len(sys.argv) > 2 else 'visualization/'
+    input_file = sys.argv[1] if len(sys.argv) > 1 else 'benchmark_result/GHC_final/decress_key.txt'
+    output_dir = sys.argv[2] if len(sys.argv) > 2 else 'visualization/figures/GHC_final'
     
     if not Path(input_file).exists():
         print(f"Error: {input_file} not found")
@@ -101,4 +130,4 @@ if __name__ == '__main__':
     print(f"Threads: {sorted(set(data['threads']))}")
     
     plot_decrease_key(data, output_dir)
-    print("\n✓ All plots generated successfully!")
+    print("\nAll plots generated successfully!")

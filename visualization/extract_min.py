@@ -4,9 +4,15 @@ Plot extract_min benchmark results
 """
 
 import re
+import os
+import tempfile
+from pathlib import Path
+
+os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "parallel_fib_heap_matplotlib"))
+Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+
 import matplotlib.pyplot as plt
 import numpy as np
-from pathlib import Path
 
 def parse_extract_min_results(filepath):
     """Parse extract_min benchmark output file"""
@@ -18,7 +24,7 @@ def parse_extract_min_results(filepath):
     }
     
     pattern = re.compile(
-        r"number of nodes=(\d+)\s+batch_size=(\d+)\s+threads=(\d+)\s+time_ms=([\d\.]+)(?:\s+speedup=([\d\.]+))?"
+        r"number of nodes=(\d+)\s+batch_size=(\d+)\s+threads=(\d+)\s+time_ms=([\d.]+).*?(?:\s+speedup=([\d.]+))?$"
     )
     
     with open(filepath, 'r') as f:
@@ -41,7 +47,7 @@ def parse_extract_min_results(filepath):
 def plot_extract_min(data, output_dir='.'):
     """Create visualization: Speedup vs Threads (Bar Chart)"""
     output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     
     # Group data by node size
     nodes_values = sorted(set(data['nodes']))
@@ -57,36 +63,37 @@ def plot_extract_min(data, output_dir='.'):
     for idx, nodes in enumerate(nodes_values):
         speedups = []
         for t in thread_values:
+            value = np.nan
             for i, (n, thr) in enumerate(zip(data['nodes'], data['threads'])):
                 if n == nodes and thr == t and data['speedup'][i] is not None:
-                    speedups.append(data['speedup'][i])
+                    value = data['speedup'][i]
                     break
+            speedups.append(value)
         
-        if speedups:
-            offset = width * (idx - len(nodes_values) / 2 + 0.5)
-            ax.bar(x + offset, speedups, width, label=f'{nodes} nodes')
+        offset = width * (idx - len(nodes_values) / 2 + 0.5)
+        ax.bar(x + offset, speedups, width, label=f'{nodes} trees')
     
     # Add baseline line (speedup = 1)
     ax.axhline(y=1, color='black', linestyle='--', linewidth=2, alpha=0.6, label='Baseline (1x speedup)')
     
     ax.set_xlabel('Number of Threads', fontsize=13, fontweight='bold')
     ax.set_ylabel('Speedup', fontsize=13, fontweight='bold')
-    ax.set_title('Extract Min - Speedup vs Threads', fontsize=14, fontweight='bold')
+    ax.set_title('DeleteMin - Speedup vs Threads', fontsize=14, fontweight='bold')
     ax.set_xticks(x)
     ax.set_xticklabels(thread_values)
     ax.legend(fontsize=11, loc='best')
     ax.grid(True, alpha=0.3, axis='y')
     plt.tight_layout()
     plt.savefig(output_dir / 'extract_min_speedup_vs_threads.png', dpi=150)
-    print(f"✓ Saved: {output_dir / 'extract_min_speedup_vs_threads.png'}")
+    print(f"Saved: {output_dir / 'extract_min_speedup_vs_threads.png'}")
     plt.close()
 
 if __name__ == '__main__':
     import sys
     
     # Use input file from command line or default
-    input_file = sys.argv[1] if len(sys.argv) > 1 else 'benchmark_result/extract_min.txt'
-    output_dir = sys.argv[2] if len(sys.argv) > 2 else 'visualization/'
+    input_file = sys.argv[1] if len(sys.argv) > 1 else 'benchmark_result/GHC_final/extract_min.txt'
+    output_dir = sys.argv[2] if len(sys.argv) > 2 else 'visualization/figures/GHC_final'
     
     if not Path(input_file).exists():
         print(f"Error: {input_file} not found")
@@ -100,4 +107,4 @@ if __name__ == '__main__':
     print(f"Threads: {sorted(set(data['threads']))}")
     
     plot_extract_min(data, output_dir)
-    print("\n✓ All plots generated successfully!")
+    print("\nAll plots generated successfully!")
