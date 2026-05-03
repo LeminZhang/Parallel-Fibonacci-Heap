@@ -23,6 +23,7 @@ SEQUENTIAL_TEST_BIN := $(BUILD_DIR)/SequentialFibHeapTest.exe
 COARSE_TEST_BIN := $(BUILD_DIR)/CoarseGrainedFibHeapTest.exe
 BINARY_TEST_BIN := $(BUILD_DIR)/BinaryHeapTest.exe
 FINE_TEST_BIN := $(BUILD_DIR)/FineGrainedFibHeapTest.exe
+PARALLEL_TEST_BIN := $(BUILD_DIR)/ParallelFibHeapTest.exe
 BENCHMARK_BIN := $(BUILD_DIR)/benchmark.exe
 BENCHMARK_BINARY_BIN := $(BUILD_DIR)/benchmark_binary.exe
 BENCHMARK_PARALLEL_BIN := $(BUILD_DIR)/benchmark_parallel.exe
