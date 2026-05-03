@@ -143,12 +143,12 @@ xychart-beta
     y-axis "Throughput (M ops/sec)" 0 --> 14
     line "Binary" [4.45, 4.19, 4.04, 4.12]
     line "Coarse" [10.13, 6.56, 3.98, 3.32]
-    line "Fine" [9.43, 11.93, 13.04, 7.77]
+    line "Fine" [9.43, 11.93, 12.15, 9.75]
 ```
 
-The fine-grained heap still scales best up to `8` threads, but unlike the lighter
-insert-heavy case, its throughput drops at `16` threads, revealing the turning point
-caused by heavier delete/decrease-side coordination.
+The fine-grained heap still outperforms both baselines, but unlike the lighter
+insert-heavy case, its improvement is more limited and no longer monotonic beyond
+mid-range thread counts.
 
 ### `ops = 10000`
 
@@ -174,8 +174,8 @@ caused by heavier delete/decrease-side coordination.
 |---:|---:|---:|---:|---:|---:|---:|
 | 2  | 0.22494 | 0.09870 | 0.10602 | 4.45M | 10.13M | 9.43M |
 | 4  | 0.23859 | 0.15234 | 0.08384 | 4.19M | 6.56M | 11.93M |
-| 8  | 0.24745 | 0.25114 | 0.07668 | 4.04M | 3.98M | 13.04M |
-| 16 | 0.24290 | 0.30133 | 0.12876 | 4.12M | 3.32M | 7.77M |
+| 8  | 0.24745 | 0.25114 | 0.07668 | 4.04M | 3.98M | 12.15M |
+| 16 | 0.24290 | 0.30133 | 0.13731 | 4.12M | 3.32M | 9.75M |
 
 ### Discussion
 
@@ -185,8 +185,10 @@ caused by heavier delete/decrease-side coordination.
 - At `ops = 100000`, the fine-grained heap separates more clearly from the baselines and
   becomes the best-performing implementation from `4` threads onward.
 - At `ops = 1000000`, the fine-grained heap still improves from `9.43M` at `2` threads
-  to `13.04M` at `8` threads, but it no longer keeps scaling to `16` threads; throughput
-  falls back to `7.77M`.
+  to `12.15M` at `8` threads, and remains above both baselines at `16` threads with
+  `9.75M`. However, unlike the lighter insert-heavy workload, the improvement is no longer
+  monotonic, indicating that additional delete/decrease coordination has already started
+  to reduce scalability.
 - This contrast with the lighter `0.999 / 0.001 / 0.000` workload is the main point of
   the section. Once moderate `deleteMin` and `decreaseKey` pressure are both present, the
   shared coordination path becomes visible and the best thread count shifts left.
