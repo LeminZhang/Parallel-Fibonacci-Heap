@@ -1,24 +1,28 @@
 #include "../src/CoarseGrainedFibHeap.h"
+#include "../src/FineGrainedFibHeap.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
-#include <exception>
 #include <iomanip>
 #include <iostream>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
-#include <random>
 
 namespace {
 
-const int PROCTECT_WARMUP = 1000;
+// Additional warmup
+constexpr int kWarmupInserts = 5000;
+// Magic Number
+constexpr int dummyNodeNum = 1024;
 
 enum class ImplType {
     Coarse,
+    Fine,
 };
 
 enum class OpType {
@@ -29,12 +33,14 @@ enum class OpType {
 
 struct BenchmarkConfig {
     ImplType impl = ImplType::Coarse;
-    float insertLoad = 1.0;
-    float deleteLoad = 0.0;
-    float decreaseLoad = 0.0;
+    float insertLoad = 1.0f;
+    float deleteLoad = 0.0f;
+    float decreaseLoad = 0.0f;
     int threads = 1;
     int ops = 10000;
     unsigned seed = 42;
+    size_t promisingSize = 8;
+    size_t spillSections = 4;
 };
 
 struct Operation {
@@ -44,29 +50,21 @@ struct Operation {
     int new_value = 0;
 };
 
+struct GeneratedWorkload {
+    std::vector<Operation> warmup_ops;
+    std::vector<Operation> ops;
+    // # of decreaseKey
+    int protected_handle_count = 0;
+};
+
 struct BenchmarkResult {
     double elapsed_ms = 0.0;
     int executed_ops = 0;
     int insert_ops = 0;
     int delete_ops = 0;
     int decrease_ops = 0;
+    long long delete_value_sum = 0;
 };
-
-struct GeneratedWorkload {
-    std::vector<Operation> ops;
-    std::vector<Operation> warmupOps;
-    int protectedHandleCount = 0;
-};
-
-void print_usage(const char* program_name) {
-    std::cerr
-        << "Usage: " << program_name
-        << " --impl coarse"
-        << " --threads N"
-        << " --ops N"
-        << " --seed N"
-        << " --workload <insert_ratio> <delete_ratio> <decrease_ratio>\n";
-}
 
 BenchmarkConfig parse_args(int argc, char** argv) {
     BenchmarkConfig config;
@@ -75,34 +73,37 @@ BenchmarkConfig parse_args(int argc, char** argv) {
         const std::string arg = argv[i];
 
         if (arg == "--impl" && i + 1 < argc) {
-            if (std::string(argv[++i]) == "coarse") config.impl = ImplType::Coarse;
-            else    throw std::invalid_argument("Unknown impl type");
+            const std::string impl = argv[++i];
+            if (impl == "coarse") {
+                config.impl = ImplType::Coarse;
+            } else if (impl == "fine") {
+                config.impl = ImplType::Fine;
+            } else {
+                throw std::invalid_argument("Unknown impl type");
+            }
         } else if (arg == "--threads" && i + 1 < argc) {
             config.threads = std::stoi(argv[++i]);
         } else if (arg == "--ops" && i + 1 < argc) {
             config.ops = std::stoi(argv[++i]);
         } else if (arg == "--seed" && i + 1 < argc) {
             config.seed = static_cast<unsigned>(std::stoul(argv[++i]));
-        } else if (arg == "--workload" && i + 1 < argc) {
-            if (i + 3 >= argc) {
-                throw std::invalid_argument ("Error: --workload requires exactly 3 numbers");
+        } else if (arg == "--promising-size" && i + 1 < argc) {
+            config.promisingSize = static_cast<size_t>(std::stoull(argv[++i]));
+        } else if (arg == "--spill-sections" && i + 1 < argc) {
+            config.spillSections = static_cast<size_t>(std::stoull(argv[++i]));
+        } else if (arg == "--workload" && i + 3 < argc) {
+            const float insertLoad = std::stof(argv[++i]);
+            const float deleteLoad = std::stof(argv[++i]);
+            const float decreaseLoad = std::stof(argv[++i]);
+            const float totalLoad = insertLoad + deleteLoad + decreaseLoad;
+            if (insertLoad < 0.0f || deleteLoad < 0.0f || decreaseLoad < 0.0f ||
+                insertLoad > 1.0f || deleteLoad > 1.0f || decreaseLoad > 1.0f ||
+                std::fabs(totalLoad - 1.0f) > 1e-6f) {
+                throw std::invalid_argument("Invalid workload distribution");
             }
-            try {
-                float insertLoad = std::stof((argv[++i]));
-                float minLoad = std::stof((argv[++i]));
-                float decreaseLoad = std::stof((argv[++i]));
-                const float totalLoad = insertLoad + minLoad + decreaseLoad;
-                if (insertLoad < 0.0f || minLoad < 0.0f || decreaseLoad < 0.0f ||
-                    insertLoad > 1.0f || minLoad > 1.0f || decreaseLoad > 1.0f ||
-                    std::fabs(totalLoad - 1.0f) > 1e-6f) {
-                    throw std::invalid_argument ("Error: --invalid workload distribution");
-                }
-                config.insertLoad = insertLoad;
-                config.deleteLoad = minLoad;
-                config.decreaseLoad = decreaseLoad;
-            } catch (const std::exception&) {
-                throw std::invalid_argument ("Error: --workload values must be valid numbers");
-            }
+            config.insertLoad = insertLoad;
+            config.deleteLoad = deleteLoad;
+            config.decreaseLoad = decreaseLoad;
         } else {
             throw std::invalid_argument("Invalid argument: " + arg);
         }
@@ -114,13 +115,19 @@ BenchmarkConfig parse_args(int argc, char** argv) {
     if (config.ops <= 0) {
         throw std::invalid_argument("--ops must be positive");
     }
+    if (config.promisingSize == 0) {
+        throw std::invalid_argument("--promising-size must be positive");
+    }
+    if (config.spillSections == 0) {
+        throw std::invalid_argument("--spill-sections must be positive");
+    }
 
     return config;
 }
 
 /**
  * Generate operations based on given distribution
- * Generate a warmup set to avoid illegal decreaseKey, [2000000, 2000000+decreaseNum]
+ * Generate a warmup set to avoid illegal decreaseKey, [2000000, 3000000]
  * DeleteMin will never hit this portion, decareseKey will randomly decrease their values
  */
 GeneratedWorkload generate_workload(const BenchmarkConfig& config) {
@@ -128,24 +135,26 @@ GeneratedWorkload generate_workload(const BenchmarkConfig& config) {
     std::vector<Operation>& ops = workload.ops;
     ops.reserve(static_cast<size_t>(config.ops));
 
-    int liveCount = 0;
-    int nextDecreaseValue = 1999999;
+    // Amount of each type operations is fixed
     const int insertTarget = static_cast<int>(config.insertLoad * config.ops);
     const int deleteTarget = static_cast<int>(config.deleteLoad * config.ops);
     const int decreaseTarget = config.ops - insertTarget - deleteTarget;
+    // Number of alive nodes
+    int live_count = kWarmupInserts + decreaseTarget;
+    int next_decrease_value = 1'999'999;
     int insertRemaining = insertTarget;
     int deleteRemaining = deleteTarget;
     int decreaseRemaining = decreaseTarget;
-    // Generate random order decrease, each node once
-    std::vector<int> randomDecrease;
-    randomDecrease.reserve(decreaseTarget);
-    for (int i = 0; i < decreaseTarget; ++i) {
-        randomDecrease.push_back(i);
-    }
+
     std::mt19937 rng(config.seed);
-    std::shuffle(randomDecrease.begin(), randomDecrease.end(), rng);
-    // Could be deleted node in range 0 - 1000000
+    // Could be deleted node in: range 0 - 1000000
     std::uniform_int_distribution<int> valueDist(1, 1'000'000);
+    std::vector<int> random_decrease_handles;
+    random_decrease_handles.reserve(static_cast<size_t>(decreaseTarget));
+    for (int i = 0; i < decreaseTarget; ++i) {
+        random_decrease_handles.push_back(i);
+    }
+    std::shuffle(random_decrease_handles.begin(), random_decrease_handles.end(), rng);
 
     for (int step = 0; step < config.ops; ++step) {
         std::vector<OpType> candidates;
@@ -154,10 +163,10 @@ GeneratedWorkload generate_workload(const BenchmarkConfig& config) {
         if (insertRemaining > 0) {
             candidates.push_back(OpType::Insert);
         }
-        if (deleteRemaining > 0 && liveCount > 0) {
+        if (deleteRemaining > 0 && live_count > 0) {
             candidates.push_back(OpType::DeleteMin);
         }
-        if (decreaseRemaining > 0 && liveCount > 0) {
+        if (decreaseRemaining > 0 && live_count > 0) {
             candidates.push_back(OpType::DecreaseKey);
         }
 
@@ -166,99 +175,95 @@ GeneratedWorkload generate_workload(const BenchmarkConfig& config) {
 
         if (type == OpType::Insert) {
             ops.push_back(Operation{OpType::Insert, valueDist(rng), -1, -1});
-            ++liveCount;
+            ++live_count;
             --insertRemaining;
         } else if (type == OpType::DeleteMin) {
             ops.push_back(Operation{OpType::DeleteMin, -1, -1, -1});
-            --liveCount;
+            --live_count;
             --deleteRemaining;
         } else {
-            ops.push_back(Operation{OpType::DecreaseKey, -1, randomDecrease[decreaseRemaining - 1], nextDecreaseValue});
+            ops.push_back(Operation{
+                OpType::DecreaseKey,
+                -1,
+                random_decrease_handles[static_cast<size_t>(decreaseRemaining - 1)],
+                next_decrease_value});
             --decreaseRemaining;
-            --nextDecreaseValue;
+            --next_decrease_value;
         }
     }
 
-    std::vector<Operation>& warmupOps = workload.warmupOps;
-    const int protectedWarmupCount = PROCTECT_WARMUP + decreaseTarget;
-    warmupOps.reserve(static_cast<size_t>(protectedWarmupCount));
-    workload.protectedHandleCount = decreaseTarget;
+    std::vector<Operation>& warmup_ops = workload.warmup_ops;
+    // Our warmup consists of normal warmup (5000) + decreasewarmup (ensure legal ops)
+    const int protectedWarmupCount = kWarmupInserts + decreaseTarget;
+    warmup_ops.reserve(static_cast<size_t>(protectedWarmupCount));
+    workload.protected_handle_count = decreaseTarget;
 
-    std::uniform_int_distribution<int> valueDistWarmup(1, 1'000'000);
-    for (int step = 0; step < PROCTECT_WARMUP; ++step) {
-        warmupOps.push_back(Operation{OpType::Insert, valueDistWarmup(rng), -1, -1});
+    for (int i = 0; i < kWarmupInserts; ++i) {
+        // normal warmup shares the same random distribution as other insert
+        warmup_ops.push_back(Operation{OpType::Insert, valueDist(rng), -1, -1});
     }
-
-    for (int step = 0; step < decreaseTarget; ++step) {
-        warmupOps.push_back(Operation{OpType::Insert, 2000000 + step, step, -1});
+    for (int i = 0; i < decreaseTarget; ++i) {
+        // Special large insert, ensure our decreaseTarget is not deleted by deleteMin
+        // deleteMin will consume normal insert only
+        warmup_ops.push_back(Operation{OpType::Insert, 2'000'000 + i, i, -1});
     }
 
     return workload;
 }
 
+template <typename HeapType>
 void execute_operation(
-    CoarseGrainedFibHeap& heap,
+    HeapType& heap,
     const Operation& op,
-    FibNode* node,
     BenchmarkResult& local_result
 ) {
-    switch (op.type) {
-    case OpType::Insert: {
-        (void)heap.insert(op.handle_id, op.value);
+    if (op.type == OpType::Insert) {
+        (void)heap.insert(new FibNode(op.value, op.handle_id));
         local_result.insert_ops++;
-        break;
-    }
-    case OpType::DeleteMin: {
-        (void)heap.deleteMin();
+    } else if (op.type == OpType::DeleteMin) {
+        const DeleteMinResult result = heap.deleteMin();
         local_result.delete_ops++;
-        break;
+        local_result.delete_value_sum += static_cast<long long>(result.value);
+    } else {
+        try {
+            heap.decreaseKey(op.handle_id, op.new_value);
+            local_result.decrease_ops++;
+        } catch (const std::runtime_error& ex) {
+            if (std::string(ex.what()) != "decreaseKey handle has no active node") {
+                throw;
+            }
+        }
     }
-    case OpType::DecreaseKey: {
-        heap.decreaseKey(node, op.new_value);
-        local_result.decrease_ops++;
-        break;
-    }
-    }
-
     local_result.executed_ops++;
 }
 
-BenchmarkResult run_coarse_parallel(
+template <typename HeapType>
+BenchmarkResult run_parallel(
+    HeapType& heap,
     const GeneratedWorkload& workload,
     int threads
 ) {
-    CoarseGrainedFibHeap heap;
     BenchmarkResult result;
-    std::atomic<size_t> next_op{0};
     std::vector<std::thread> workers;
     workers.reserve(static_cast<size_t>(threads));
     std::vector<BenchmarkResult> thread_results(static_cast<size_t>(threads));
-    std::vector<FibNode*> protectedHandles(static_cast<size_t>(workload.protectedHandleCount), nullptr);
-    for (const Operation& warmupOp : workload.warmupOps) {
-        FibNode* node = heap.insert(warmupOp.handle_id, warmupOp.value);
-        if (warmupOp.handle_id >= 0) {
-            protectedHandles[static_cast<size_t>(warmupOp.handle_id)] = node;
-        }
+
+    for (const Operation& op : workload.warmup_ops) {
+        // Warmup insert
+        (void)heap.insert(new FibNode(op.value, op.handle_id));
     }
 
     const auto start = std::chrono::steady_clock::now();
-
+    // Static Assignment to minimize overhead
     for (int tid = 0; tid < threads; ++tid) {
         workers.emplace_back([&, tid]() {
             BenchmarkResult& local_result = thread_results[static_cast<size_t>(tid)];
-            while (true) {
-                const size_t index = next_op.fetch_add(1);
-                if (index >= workload.ops.size()) {
-                    break;
-                }
-                const Operation& op = workload.ops[index];
-                FibNode* node = nullptr;
-                if (op.type == OpType::DecreaseKey &&
-                    op.handle_id >= 0 &&
-                    static_cast<size_t>(op.handle_id) < protectedHandles.size()) {
-                    node = protectedHandles[static_cast<size_t>(op.handle_id)];
-                }
-                execute_operation(heap, op, node, local_result);
+            const size_t begin =
+                static_cast<size_t>(tid) * workload.ops.size() / static_cast<size_t>(threads);
+            const size_t end =
+                static_cast<size_t>(tid + 1) * workload.ops.size() / static_cast<size_t>(threads);
+            for (size_t index = begin; index < end; ++index) {
+                execute_operation(heap, workload.ops[index], local_result);
             }
         });
     }
@@ -274,6 +279,7 @@ BenchmarkResult run_coarse_parallel(
         result.insert_ops += local_result.insert_ops;
         result.delete_ops += local_result.delete_ops;
         result.decrease_ops += local_result.decrease_ops;
+        result.delete_value_sum += local_result.delete_value_sum;
     }
 
     result.elapsed_ms =
@@ -285,22 +291,34 @@ BenchmarkResult run_benchmark(
     const BenchmarkConfig& config,
     const GeneratedWorkload& workload
 ) {
-    return run_coarse_parallel(workload, config.threads);
+    switch (config.impl) {
+    case ImplType::Coarse: {
+        CoarseGrainedFibHeap heap;
+        return run_parallel(heap, workload, config.threads);
+    }
+    case ImplType::Fine: {
+        FineGrainedFibHeap heap(
+            dummyNodeNum,
+            config.promisingSize,
+            config.spillSections);
+        return run_parallel(heap, workload, config.threads);
+    }
+    }
+    throw std::invalid_argument("Unknown impl type");
 }
 
 const char* print_impl(ImplType impl) {
     switch (impl) {
     case ImplType::Coarse:
         return "coarse";
+    case ImplType::Fine:
+        return "fine";
     }
     return "unknown";
 }
 
 std::string format_workload(float insert, float del, float decrease) {
-    return
-    std::to_string(insert) + "/" +
-    std::to_string(del) + "/" +
-    std::to_string(decrease);
+    return std::to_string(insert) + "/" + std::to_string(del) + "/" + std::to_string(decrease);
 }
 
 void print_result(
@@ -315,13 +333,19 @@ void print_result(
     std::cout
         << std::fixed << std::setprecision(3)
         << "impl=" << print_impl(config.impl)
-        << " workload=" << format_workload(config.insertLoad, config.deleteLoad, config.decreaseLoad)
+        << " workload=" << format_workload(
+               config.insertLoad,
+               config.deleteLoad,
+               config.decreaseLoad)
         << " threads=" << config.threads
         << " ops=" << config.ops
         << " seed=" << config.seed
+        << " promising_size=" << config.promisingSize
+        << " spill_sections=" << config.spillSections
         << " executed_ops=" << result.executed_ops
         << " insert_ops=" << result.insert_ops
         << " delete_ops=" << result.delete_ops
+        << " delete_value_sum=" << result.delete_value_sum
         << " decrease_ops=" << result.decrease_ops
         << " time_ms=" << result.elapsed_ms
         << " throughput_ops_per_sec=" << throughput
@@ -338,7 +362,6 @@ int main(int argc, char** argv) {
         print_result(config, result);
         return 0;
     } catch (const std::exception& ex) {
-        print_usage(argv[0]);
         std::cerr << "Error: " << ex.what() << '\n';
         return 1;
     }

@@ -1,4 +1,4 @@
-#include "../src/CoarseGrainedFibHeap.h"
+#include "../src/FineGrainedFibHeap.h"
 
 #include <cassert>
 #include <iostream>
@@ -20,7 +20,7 @@ void join_all(std::vector<std::thread>& threads) {
  * deleteMin sequence.
  */
 void test_parallel_insert_then_drain() {
-    CoarseGrainedFibHeap heap;
+    FineGrainedFibHeap heap;
 
     // 400 ops in 4 threads
     constexpr int kThreads = 4;
@@ -88,38 +88,36 @@ void test_parallel_insert_then_drain() {
 * deleteMin order remains nondecreasing.
 */
 void test_parallel_decrease_keys() {
-    CoarseGrainedFibHeap heap;
+    FineGrainedFibHeap heap;
 
     constexpr int kThreads = 4;
     constexpr int kHandlesPerThread = 100;
     constexpr int kTotalHandles = kThreads * kHandlesPerThread;
 
-    std::vector<FibNode*> handles;
-    handles.reserve(kTotalHandles);
-
     for (int i = 0; i < kTotalHandles; ++i) {
-        handles.push_back(heap.insert(new FibNode(1000 + i, i)));
+        heap.insert(new FibNode(1000 + i, i));
     }
 
     std::vector<std::thread> threads;
     threads.reserve(kThreads);
 
     for (int tid = 0; tid < kThreads; ++tid) {
-        threads.emplace_back([&heap, &handles, tid]() {
+        threads.emplace_back([&heap, tid]() {
             const int begin = tid * kHandlesPerThread;
             const int end = begin + kHandlesPerThread;
             for (int i = begin; i < end; ++i) {
-                heap.decreaseKey(handles[i], -(i + 1));
+                heap.decreaseKey(i, -(i + 1));
             }
         });
     }
     join_all(threads);
 
     assert(heap.size() == static_cast<size_t>(kTotalHandles));
-    assert(heap.min() != nullptr);
-    assert(heap.min()->value == -kTotalHandles);
 
-    int previous = heap.deleteMin().value;
+    DeleteMinResult first = heap.deleteMin();
+    assert(first.value == -kTotalHandles);
+
+    int previous = first.value;
     for (int count = 1; count < kTotalHandles; ++count) {
         const int current = heap.deleteMin().value;
         assert(previous <= current);
@@ -135,6 +133,6 @@ int main() {
     test_parallel_insert_then_drain();
     test_parallel_decrease_keys();
 
-    std::cout << "CoarseGrainedFibHeap tests passed.\n";
+    std::cout << "FineGrainedFibHeap tests passed.\n";
     return 0;
 }

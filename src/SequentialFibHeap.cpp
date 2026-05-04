@@ -12,7 +12,7 @@ SequentialFibHeap::~SequentialFibHeap() {
     if (min_node_) destroy_all(min_node_);
 }
 
-bool   SequentialFibHeap::isEmpty() const { return size_ == 0; }
+bool SequentialFibHeap::isEmpty() const { return size_ == 0; }
 size_t SequentialFibHeap::size()    const { return size_; }
 FibNode* SequentialFibHeap::min() const { return min_node_; }
 
@@ -20,22 +20,13 @@ FibNode* SequentialFibHeap::min() const { return min_node_; }
  * insert: O(1) amortized
  * Allocate space for a new Node, insert it after min
  */
-FibNode* SequentialFibHeap::insert(int handle_id, int value) {
-    // FibNode* node = new FibNode(value, handle_id);
-
-    // // 线程局部池（每个线程一份）
-    thread_local std::list<FibNode> tls_pool;
-
-    // 在线程局部池中就地构造一个节点
-    tls_pool.emplace_back(value, handle_id);
-    FibNode* node = &tls_pool.back(); // 地址稳定
+FibNode* SequentialFibHeap::insert(FibNode* node) {
 
     if (min_node_ == nullptr) {
         node->left = node;
         node->right = node;
         min_node_ = node;
     } else {
-        // Add to the right of min node
         node->left = min_node_;
         node->right = min_node_->right;
         min_node_->right->left = node;
@@ -52,12 +43,13 @@ FibNode* SequentialFibHeap::insert(int handle_id, int value) {
  * Delete the min node, move its children to root list and consolidate
  */
 DeleteMinResult SequentialFibHeap::deleteMin() {
-    if (!min_node_) throw std::runtime_error("Heap is empty");
+    if (min_node_ == nullptr)
+        throw std::runtime_error("Heap is empty");
+
     FibNode* z = min_node_;
     DeleteMinResult result{z->value, z->handle_id};
 
-    // Promote all children of z into the root list
-    if (z->child) {
+    if (z->child != nullptr) {
         std::vector<FibNode*> children;
         FibNode* child = z->child;
         do {
@@ -76,7 +68,6 @@ DeleteMinResult SequentialFibHeap::deleteMin() {
         }
     }
 
-    // Remove z from root list
     z->left->right = z->right;
     z->right->left = z->left;
 
@@ -107,12 +98,12 @@ void SequentialFibHeap::decreaseKey(FibNode* node, int newVal) {
         min_node_ = node;
 }
 
-// ─── Private ─────────────────────────────────────────────────────────────────
-
 void SequentialFibHeap::consolidate() {
+    // The degree table: larger than log2(n).
     int max_deg = static_cast<int>(std::log2(static_cast<double>(size_))) + 2;
     std::vector<FibNode*> table(max_deg + 1, nullptr);
 
+    // Snapshot current root list
     std::vector<FibNode*> roots;
     FibNode* curr = min_node_;
     do {
@@ -124,9 +115,12 @@ void SequentialFibHeap::consolidate() {
         FibNode* x = w;
         int d = x->degree;
         while (d < (int)table.size() && table[d] != nullptr) {
+            // Another root with the same degree already exists.
             FibNode* y = table[d];
             if (y->value < x->value) std::swap(x, y);
+            // Merge the two equal-degree trees into one larger tree.
             link(y, x);
+            // Degree d is consumed; the merged tree degree = d + 1.
             table[d] = nullptr;
             d++;
             if (d >= (int)table.size())
@@ -135,13 +129,14 @@ void SequentialFibHeap::consolidate() {
         table[d] = x;
     }
 
+    // Rebuild the root list from degree table.
     min_node_ = nullptr;
     for (FibNode* node : table) {
         if (!node) continue;
         if (min_node_ == nullptr) {
-            node->left  = node;
+            node->left = node;
             node->right = node;
-            min_node_   = node;
+            min_node_ = node;
         } else {
             node->left = min_node_;
             node->right = min_node_->right;
@@ -172,9 +167,7 @@ void SequentialFibHeap::link(FibNode* y, FibNode* x) {
     y->marked = false;
 }
 
-// Cut node from its parent and move it to the root list
 void SequentialFibHeap::cut(FibNode* node, FibNode* parent) {
-    // Remove node from parent's child list
     if (node->right == node) {
         parent->child = nullptr;
     } else {
@@ -185,7 +178,6 @@ void SequentialFibHeap::cut(FibNode* node, FibNode* parent) {
     }
     parent->degree--;
 
-    // Add node to root list
     node->left = min_node_;
     node->right = min_node_->right;
     min_node_->right->left = node;
@@ -194,7 +186,6 @@ void SequentialFibHeap::cut(FibNode* node, FibNode* parent) {
     node->marked = false;
 }
 
-// Cascading cut: if parent is marked, cut it too and recurse upward
 void SequentialFibHeap::cascading_cut(FibNode* node) {
     FibNode* parent = node->parent;
     if (parent != nullptr) {
