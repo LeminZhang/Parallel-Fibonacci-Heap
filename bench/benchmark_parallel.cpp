@@ -21,19 +21,19 @@ void benchmark_insert() {
 
     vector<size_t> batch_sizes;
     for (int i = 0; i <= 20; i++) {
-        batch_sizes.push_back(1 << i); // 8, 16, 32, ..., 8388608
+        batch_sizes.push_back(1 << i); // 8, 16, 32, ...
     }
 
     // Generate number of operations to test batches
     vector<size_t> n_ops;
     for (int i = 0; i <= 23; i++) {
-        n_ops.push_back(1 << i); // 8, 16, 32, ..., 67108864
+        n_ops.push_back(1 << i); // 8, 16, 32, ...
     }
 
     for (size_t batch_size : batch_sizes) {
         for (size_t n_op: n_ops) {
             if (n_op < batch_size) {
-                continue; // Skip invalid configurations where total operations is less than batch size
+                continue;
             }
 
             // Get baseline with 1 thread
@@ -50,7 +50,6 @@ void benchmark_insert() {
             }
             auto end = std::chrono::steady_clock::now();
             baseline_time_ms = std::chrono::duration<double, std::milli>(end - start).count();
-            // baseline_time_ms /= 5.0;
             cout <<
                 " number of operations=" << n_op
                 << " batch_size=" << batch_size
@@ -212,7 +211,7 @@ double test_decrease_key(vector<int> values, int num_threads = 4, int batch_size
     for (int i = 0; i < (int)values.size() / batch_size; i++) {
         parallel_affinity::pin_current_thread_to_efficiency_core();
         for (int j = 0; j < batch_size; j+=2) {
-            heap.obtainMutexesForDecreaseKey(nodes[i][j]); // Obtain necessary mutexes for decrease key operation
+            heap.obtainMutexesForDecreaseKey(nodes[i][j]);
         }
     }
     #pragma omp parallel for num_threads(num_threads)
@@ -258,7 +257,7 @@ void benchmark_decrease_key() {
         for (int iter = 0; iter < iterations; iter++) {
             baseline_time_ms += test_decrease_key(values, 1, batch_size);
         }
-        baseline_time_ms /= iterations; // Average over iterations
+        baseline_time_ms /= iterations;
         cout <<
             " number of nodes=" << n_op
             << " batch_size=" << batch_size
@@ -295,13 +294,9 @@ void benchmark_decrease_key() {
 int main() {
     parallel_affinity::restrict_process_to_efficiency_cores();
 
-    // Create benchmark_result directory
-    // system("mkdir -p benchmark_result");
+        std::streambuf* original_cout = std::cout.rdbuf();
     
-    // Save original cout buffer
-    std::streambuf* original_cout = std::cout.rdbuf();
-    
-    // ===== Run benchmark_insert =====
+    // Insert
     {
         std::ofstream insert_file("benchmark_result/insert.txt");
         std::cout.rdbuf(insert_file.rdbuf());
@@ -310,7 +305,7 @@ int main() {
         insert_file.close();
     }
     
-    // ===== Run benchmark_extract_min =====
+    // Extract min
     {
         std::ofstream extract_file("benchmark_result/extract_min.txt");
         std::cout.rdbuf(extract_file.rdbuf());
@@ -319,7 +314,7 @@ int main() {
         extract_file.close();
     }
     
-    // ===== Run benchmark_decrease_key =====
+    // Decrease key
     {
         std::ofstream decrease_file("benchmark_result/decress_key.txt");
         std::cout.rdbuf(decrease_file.rdbuf());
@@ -328,7 +323,6 @@ int main() {
         decrease_file.close();
     }
     
-    // Restore original cout
     std::cout.rdbuf(original_cout);
     
     std::cout << "All benchmarks completed!" << std::endl;

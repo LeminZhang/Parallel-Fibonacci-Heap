@@ -78,8 +78,8 @@ struct HeapNode {
         parent->degree++;
         parent->marked = false;
         delete child->root_mutex;
-        child->root_mutex = nullptr; // Child nodes do not have their own mutex, they will use the mutex of the root node
-        child->worker_index = parent->worker_index; // Update the worker index for the child node
+        child->root_mutex = nullptr;
+        child->worker_index = parent->worker_index;
 
         return parent;
     }
@@ -107,24 +107,22 @@ struct HeapNode {
     }
 
     HeapNode * makeRoot(HeapNode<T>* &list, int worker_index) {
-        // Make this node a root and insert it into the given list
         if (this->parent == nullptr) {
             throw std::runtime_error("Only nodes with a parent can be made root");
         }
-        this->parent->degree--; // Decrement the degree of the parent
+        this->parent->degree--;
         if (this->parent->child == this) {
             if (this->right != this) {
-                this->parent->child = this->right; // Update the child pointer of the parent if necessary
-            } else {
+                this->parent->child = this->right;
                 this->parent->child = nullptr;
             }
         }
-        this->removeFromList(); // Remove the node from its current list
+        this->removeFromList(); // Remove the node from its silbing list
 
         this->worker_index = worker_index;
         this->parent = nullptr;
         this->marked = false;
-        this->root_mutex = new mutex(); // The new root node needs to have its own mutex
+        this->root_mutex = new mutex(); 
         this->insertIntoList(list);
         return this;
     }
@@ -146,7 +144,6 @@ public:
         if (first_root == nullptr) {
             first_root = node;
         } else {
-            // Merge the two circular lists
             HeapNode<T>* first_root_left = first_root->left;
             HeapNode<T>* node_left = node->left;
             first_root->left = node_left;
@@ -204,10 +201,10 @@ public:
                     worker_size--; 
                 }
                 table[d] = curr;
-                first_root = curr; // Update the first root pointer to the newly linked tree, this is important for the correctness of the algorithm, otherwise we might lose access to some nodes in the root list after consolidation
+                first_root = curr;
             }
             if (!(*(min_node->value) < *(curr->value))) {
-                min_node = curr;
+                min_node = curr; // Make sure the min node is a root node
             }
             curr = next;
         }
@@ -222,6 +219,7 @@ class ParallelFibHeap
 private:
     vector<unique_ptr<ParallelWorker<T>>> workers;
     atomic<size_t> total_size = 0; // The total number of trees in the root lists of all workers
+
     unsigned getAvailableWorker() {
         // Find the worker with the smallest local heap size
         unsigned target_index = 0;
@@ -345,7 +343,7 @@ public:
             workers[i]->worker_mutex.unlock();
         }
 
-        total_size--; // Decrement the total size of the heap
+        total_size--;
 
         return 0;
     }
@@ -427,8 +425,8 @@ public:
             int count = 0;
             HeapNode<T>* curr = workers[i]->first_root;
             while (curr != nullptr && count < (int)workers[i]->worker_size) {
-                HeapNode<T>* next = curr->right; // The original list
-                curr->worker_index = count % workers.size(); // Update the worker index for the current node
+                HeapNode<T>* next = curr->right;
+                curr->worker_index = count % workers.size();
                 curr->insertIntoList(new_lists[curr->worker_index][i]);
                 new_lists_sizes[curr->worker_index][i]++;
                 curr = next;
@@ -438,11 +436,12 @@ public:
 
         #pragma omp parallel for num_threads(workers.size())
         for (size_t i = 0; i < workers.size(); i++) {
-            workers[i]->first_root = nullptr; // Clear the current root list
-            workers[i]->worker_size = 0; // Reset the worker size
+            workers[i]->first_root = nullptr;
+            workers[i]->worker_size = 0; 
             for (size_t j = 0; j < workers.size(); j++) {
                 if (new_lists[i][j] != nullptr) {
-                    workers[i]->insert(new_lists[i][j], new_lists_sizes[i][j]); // Insert the newly consolidated node into the worker's root list, size is 0 because we are just reinserting existing nodes
+                    // Merge the new node list with the existing root list
+                    workers[i]->insert(new_lists[i][j], new_lists_sizes[i][j]); 
                 }
             }
         }

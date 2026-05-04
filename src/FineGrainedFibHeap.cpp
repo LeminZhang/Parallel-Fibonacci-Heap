@@ -71,12 +71,7 @@ bool FineGrainedFibHeap::isEmpty() const {
 // ===== helper functions =====
 
 size_t FineGrainedFibHeap::get_random_index() {
-    thread_local std::mt19937 rng([] {
-        const auto seed = static_cast<unsigned int>(
-            std::random_device{}() ^
-            static_cast<unsigned int>(std::hash<std::thread::id>{}(std::this_thread::get_id())));
-        return seed;
-    }());
+    thread_local std::mt19937 rng(std::random_device{}());
     std::uniform_int_distribution<size_t> dist(0, dummy_list_.size() - 1);
     return dist(rng);
 }

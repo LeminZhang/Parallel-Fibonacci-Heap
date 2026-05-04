@@ -35,23 +35,6 @@ void test_insert_and_find_min_orders_values(int num_threads = 4, int n_values = 
     heap.extractMin(min_value);
     cout << "Minimum value extracted: " << *min_value << endl;
 
-    // for (int g = 0; g < 10; g++) {
-    //     auto decrease_start = std::chrono::high_resolution_clock::now();
-    //     #pragma omp parallel for num_threads(num_threads)
-    //     for (int i = 0; i < n_values / values_per_group; i++) {
-    //         for (int j = 0; j < values_per_group; j++) {
-    //             if (i * values_per_group + j - g <= *min_value) 
-    //                 continue; 
-    //             heap.decreaseKey(nodes[i][j], new int(i * values_per_group + j - g - 1));
-    //         }
-    //     }
-    //     auto decrease_end = std::chrono::high_resolution_clock::now();
-    //     auto decrease_duration_ms = std::chrono::duration<double, std::milli>(decrease_end - decrease_start).count();
-    //     cout << "Decrease key round " << g << " completed in " << decrease_duration_ms << " ms" << endl;
-    //     heap.extractMin(min_value);
-    //     cout << "Minimum value extracted: " << *min_value << endl;
-    // }
-
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_duration_ms = std::chrono::duration<double, std::milli>(total_end - total_start).count();
     std::cout << "Total insert time for all values: " << total_duration_ms << " ms" << std::endl;
@@ -61,10 +44,6 @@ void test_insert_and_find_min_orders_values(int num_threads = 4, int n_values = 
 
 int main() {
     test_insert_and_find_min_orders_values(1, 1000000, 100);
-    test_insert_and_find_min_orders_values(1, 1000000, 100);
-    test_insert_and_find_min_orders_values(1, 1000000, 100);
-    test_insert_and_find_min_orders_values(8, 1000000, 100);
-    test_insert_and_find_min_orders_values(8, 1000000, 100);
     test_insert_and_find_min_orders_values(8, 1000000, 100);
     std::cout << "ParallelFibHeap tests passed.\n";
     return 0;

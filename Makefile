@@ -8,7 +8,7 @@ ifeq ($(UNAME_S),Darwin)
     CXXFLAGS := -std=c++17 -Wall -Wextra -pedantic -Xclang -fopenmp -I/opt/homebrew/opt/libomp/include -O3
     LDFLAGS := -L/opt/homebrew/opt/libomp/lib -lomp
 else
-    # Linux and other Unix-like systems
+    # Linux and Windows configuration
     CXX := g++
     CXXFLAGS := -std=c++17 -Wall -Wextra -pedantic -fopenmp -O3
     LDFLAGS :=
@@ -47,6 +47,7 @@ $(PARALLEL_TEST_BIN): $(TEST_DIR)/ParallelFibHeapTest.cpp $(SRC_DIR)/ParallelFib
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 $(FINE_TEST_BIN): $(TEST_DIR)/FineGrainedFibHeapTest.cpp $(SRC_DIR)/FineGrainedFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 $(BENCHMARK_BIN): $(BENCH_DIR)/benchmark.cpp $(SRC_DIR)/CoarseGrainedFibHeap.cpp $(SRC_DIR)/FineGrainedFibHeap.cpp $(SRC_DIR)/SequentialFibHeap.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
