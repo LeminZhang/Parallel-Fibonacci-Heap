@@ -78,7 +78,7 @@ def plot_extract_min(data, output_dir='.'):
     
     ax.set_xlabel('Number of Threads', fontsize=13, fontweight='bold')
     ax.set_ylabel('Speedup', fontsize=13, fontweight='bold')
-    ax.set_title('DeleteMin - Speedup vs Threads', fontsize=14, fontweight='bold')
+    ax.set_title('DeleteMin - Speedup vs Threads (E-core)', fontsize=14, fontweight='bold')
     ax.set_xticks(x)
     ax.set_xticklabels(thread_values)
     ax.legend(fontsize=11, loc='best')

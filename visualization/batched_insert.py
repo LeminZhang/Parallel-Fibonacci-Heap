@@ -82,7 +82,7 @@ def draw_heatmap(data, n_threads, output_dir):
 
     plt.xlabel("Number of Operations")
     plt.ylabel("Batch Size")
-    plt.title(f"Batched Insert Speedup Heatmap (threads = {n_threads})")
+    plt.title(f"Batched Insert Speedup Heatmap (threads = {n_threads}) (E-core)")
 
     plt.tight_layout()
     output_path = output_dir / f"insert_speedup_heatmap_threads_{n_threads}.png"
@@ -141,7 +141,7 @@ def draw_combined_heatmaps(data, threads, output_dir):
     for idx in range(len(heatmaps), n_rows * n_cols):
         axes[idx // n_cols][idx % n_cols].axis("off")
 
-    fig.suptitle("Batched Insert Speedup Heatmaps", fontsize=18, fontweight="bold")
+    fig.suptitle("Batched Insert Speedup Heatmaps (E-core)", fontsize=18, fontweight="bold")
     fig.tight_layout(rect=(0, 0, 0.94, 0.96))
     cbar_ax = fig.add_axes((0.955, 0.12, 0.015, 0.76))
     fig.colorbar(image, cax=cbar_ax, label="Speedup")
@@ -181,7 +181,7 @@ def draw_speedup_bar(data, batch_size, operations, output_dir):
     ax.set_xlabel("Number of Threads", fontsize=13, fontweight="bold")
     ax.set_ylabel("Speedup", fontsize=13, fontweight="bold")
     ax.set_title(
-        f"Insert Speedup (batch size = {batch_size}, operations = {operations})",
+        f"Insert Speedup (batch size = {batch_size}, operations = {operations}) (E-core)",
         fontsize=14,
         fontweight="bold",
     )

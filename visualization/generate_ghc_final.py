@@ -20,12 +20,12 @@ def main():
     parser = argparse.ArgumentParser(description="Generate figures for GHC_final benchmark results.")
     parser.add_argument(
         "--results-dir",
-        default="benchmark_result/GHC_final",
+        default="benchmark_result/E_core_final",
         help="Directory containing insert.txt, decress_key.txt, extract_min.txt, and dijkstra.txt",
     )
     parser.add_argument(
         "--output-dir",
-        default="visualization/figures/GHC_final",
+        default="visualization/figures/E_core_final",
         help="Directory for generated figures",
     )
     args = parser.parse_args()

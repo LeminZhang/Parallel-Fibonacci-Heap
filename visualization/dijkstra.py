@@ -16,6 +16,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+def read_result_lines(filepath):
+    with open(filepath, "rb") as f:
+        raw = f.read()
+
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        text = raw.decode("utf-16")
+    elif raw.startswith(b"\xef\xbb\xbf"):
+        text = raw.decode("utf-8-sig")
+    else:
+        text = raw.decode("utf-8")
+
+    return text.splitlines()
+
+
 def parse_dijkstra_results(filepath):
     pattern = re.compile(
         r"Dijkstra's algorithm with (\d+) nodes and (\d+) thread(?:s)? took ([\d.]+) ms\.(?:speedup:\s*([\d.]+))?"
@@ -27,16 +41,15 @@ def parse_dijkstra_results(filepath):
         "speedup": [],
     }
 
-    with open(filepath, "r") as f:
-        for line in f:
-            match = pattern.search(line)
-            if not match:
-                continue
+    for line in read_result_lines(filepath):
+        match = pattern.search(line)
+        if not match:
+            continue
 
-            data["nodes"].append(int(match.group(1)))
-            data["threads"].append(int(match.group(2)))
-            data["time_ms"].append(float(match.group(3)))
-            data["speedup"].append(float(match.group(4)) if match.group(4) else None)
+        data["nodes"].append(int(match.group(1)))
+        data["threads"].append(int(match.group(2)))
+        data["time_ms"].append(float(match.group(3)))
+        data["speedup"].append(float(match.group(4)) if match.group(4) else None)
 
     return data
 
@@ -78,7 +91,7 @@ def plot_dijkstra(data, output_dir):
     ax.axhline(y=1, color="black", linestyle="--", linewidth=2, alpha=0.6, label="Baseline (1x speedup)")
     ax.set_xlabel("Number of Threads", fontsize=13, fontweight="bold")
     ax.set_ylabel("Speedup", fontsize=13, fontweight="bold")
-    ax.set_title("Dijkstra - Speedup vs Threads", fontsize=14, fontweight="bold")
+    ax.set_title("Dijkstra - Speedup vs Threads (E-core)", fontsize=14, fontweight="bold")
     ax.set_xticks(x)
     ax.set_xticklabels(parallel_threads)
     ax.legend(fontsize=10, loc="best")
