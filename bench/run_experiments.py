@@ -25,48 +25,12 @@ DEFAULT_SEED = 42
 FINE_PROMISING_SIZE = 4
 FINE_SPILL_SECTIONS = 4
 IMPLEMENTATIONS = ["coarse", "fine"]
-PERF_EVENTS = "cache-references,cache-misses,cycles,instructions"
-
-
-def parse_perf_stat(stderr_text: str) -> dict[str, str]:
-    metrics: dict[str, str] = {}
-    for raw_line in stderr_text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-
-        match = re.match(r"^([\d,]+)\s+([A-Za-z0-9_.-]+)(?:\s+#.*)?$", line)
-        if match is None:
-            continue
-
-        value, event = match.groups()
-        metrics[event] = value.replace(",", "")
-
-    return metrics
-
-
-def format_perf_metrics(metrics: dict[str, str]) -> str:
-    references = metrics.get("cache-references")
-    misses = metrics.get("cache-misses")
-
-    if references is None or misses is None:
-        return "cache_miss_rate_pct=NA"
-
-    reference_count = int(references)
-    miss_count = int(misses)
-    if reference_count == 0:
-        return "cache_miss_rate_pct=NA"
-
-    miss_rate_pct = 100.0 * miss_count / reference_count
-    return f"cache_miss_rate_pct={miss_rate_pct:.3f}"
-
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
     benchmark_path = repo_root / "build" / "benchmark.exe"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = repo_root / f"result_{timestamp}.txt"
-    use_perf = "--use-perf" in sys.argv
 
     if not benchmark_path.exists():
         print(f"Benchmark executable not found: {benchmark_path}", file=sys.stderr)
@@ -111,15 +75,6 @@ def main() -> int:
                         )
 
                     command = benchmark_command
-                    if use_perf:
-                        command = [
-                            "perf",
-                            "stat",
-                            "-e",
-                            PERF_EVENTS,
-                            *benchmark_command,
-                        ]
-
                     completed = subprocess.run(command, capture_output=True, text=True)
 
                     if completed.returncode != 0:
@@ -127,9 +82,6 @@ def main() -> int:
                         continue
 
                     line = completed.stdout.strip()
-                    if use_perf:
-                        perf_metrics = parse_perf_stat(completed.stderr)
-                        line = f"{line} {format_perf_metrics(perf_metrics)}"
 
                     with open(output_path, "a", encoding="utf-8") as f:
                         f.write(line + "\n")

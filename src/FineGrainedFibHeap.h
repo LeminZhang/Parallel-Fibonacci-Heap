@@ -42,8 +42,7 @@ private:
     // deleteMin-related
     void detach_from_list(FibNode* node);
     std::vector<FibNode*> detach_children(FibNode* child_start);
-    std::vector<FibNode*> collect_section_roots(size_t section_index);
-    void clear_section(size_t section_index);
+    std::vector<FibNode*> take_section_roots(size_t section_index);
     FibNode* try_take_promising_node();
     void invalidate_promising_node(FibNode* node);
     bool is_current_version(FibNode* node) const;
@@ -56,7 +55,7 @@ private:
     // helpers
     size_t get_random_index();
     void insert_after(FibNode* anchor, FibNode* node);
-    void insert_into_section(size_t section_index, FibNode* node);
+    void destroy_tree_list(FibNode* start);
     void destroy_all();
 
     mutable std::shared_mutex coord_mutex_;
@@ -64,9 +63,9 @@ private:
     mutable std::vector<std::mutex> dummy_list_locks_;
     std::vector<FibNode*> promising_list_;
     std::atomic<size_t> size_;
-    size_t extract_cursor_;
-    size_t extracts_since_consolidate_;
-    size_t spill_cursor_;
+    size_t promising_pointer_;
+    size_t deletes_since_consolidate_;
+    size_t spill_section_pointer_;
     size_t promising_list_size_;
     size_t spill_sections_per_pass_;
     mutable std::mutex promising_mutex_;

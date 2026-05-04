@@ -99,9 +99,11 @@ void SequentialFibHeap::decreaseKey(FibNode* node, int newVal) {
 }
 
 void SequentialFibHeap::consolidate() {
+    // The degree table: larger than log2(n).
     int max_deg = static_cast<int>(std::log2(static_cast<double>(size_))) + 2;
     std::vector<FibNode*> table(max_deg + 1, nullptr);
 
+    // Snapshot current root list
     std::vector<FibNode*> roots;
     FibNode* curr = min_node_;
     do {
@@ -113,9 +115,12 @@ void SequentialFibHeap::consolidate() {
         FibNode* x = w;
         int d = x->degree;
         while (d < (int)table.size() && table[d] != nullptr) {
+            // Another root with the same degree already exists.
             FibNode* y = table[d];
             if (y->value < x->value) std::swap(x, y);
+            // Merge the two equal-degree trees into one larger tree.
             link(y, x);
+            // Degree d is consumed; the merged tree degree = d + 1.
             table[d] = nullptr;
             d++;
             if (d >= (int)table.size())
@@ -124,6 +129,7 @@ void SequentialFibHeap::consolidate() {
         table[d] = x;
     }
 
+    // Rebuild the root list from degree table.
     min_node_ = nullptr;
     for (FibNode* node : table) {
         if (!node) continue;

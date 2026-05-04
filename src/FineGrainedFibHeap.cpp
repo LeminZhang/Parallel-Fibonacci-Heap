@@ -9,6 +9,9 @@
 
 namespace {
 
+/**
+ * Dummy nodes divide root list into sections
+ */
 FibNode* make_dummy_node() {
     FibNode* node = new FibNode(std::numeric_limits<int>::max(), -1);
     node->is_dummy = true;
@@ -18,28 +21,38 @@ FibNode* make_dummy_node() {
 
 }  // namespace
 
+/**
+ * section_count: number of dummy-node sections
+ * promising_list_size: target candidate-pool size used by relaxed deleteMin
+ * spill_sections_per_pass: number of sections one spill-over refill scans
+ * dummy_list_locks_: one mutex per section.
+ * promising_list_: list of "small nodes", starts empty and is lazily resized
+ * size_: number of live logical heap nodes
+ * promising_pointer_: where the next promising-list scan begins
+ * deletes_since_consolidate_: counter used to trigger local consolidation
+ * spill_section_pointer_: which section the next spill-over begins
+ */
 FineGrainedFibHeap::FineGrainedFibHeap(
     size_t section_count,
     size_t promising_list_size,
     size_t spill_sections_per_pass)
-    : dummy_list_(section_count == 0 ? 1 : section_count, nullptr),
+    : dummy_list_(std::max<size_t>(1, section_count), nullptr),
       dummy_list_locks_(dummy_list_.size()),
       promising_list_(),
       size_(0),
-      extract_cursor_(0),
-      extracts_since_consolidate_(0),
-      spill_cursor_(0),
+      promising_pointer_(0),
+      deletes_since_consolidate_(0),
+      spill_section_pointer_(0),
       promising_list_size_(std::max<size_t>(1, promising_list_size)),
       spill_sections_per_pass_(std::max<size_t>(1, spill_sections_per_pass)) {
-    for (size_t i = 0; i < dummy_list_.size(); ++i) {
-        dummy_list_[i] = make_dummy_node();
+    // Init and link dummy nodes
+    for (FibNode*& dummy : dummy_list_) {
+        dummy = make_dummy_node();
     }
-
     const size_t n = dummy_list_.size();
     for (size_t i = 0; i < n; ++i) {
-        FibNode* current = dummy_list_[i];
-        current->left = dummy_list_[(i + n - 1) % n];
-        current->right = dummy_list_[(i + 1) % n];
+        dummy_list_[i]->left = dummy_list_[(i + n - 1) % n];
+        dummy_list_[i]->right = dummy_list_[(i + 1) % n];
     }
 }
 
@@ -75,11 +88,32 @@ void FineGrainedFibHeap::insert_after(FibNode* anchor, FibNode* node) {
     anchor->right = node;
 }
 
-void FineGrainedFibHeap::insert_into_section(size_t section_index, FibNode* node) {
-    node->section_index = static_cast<int>(section_index);
-    insert_after(dummy_list_[section_index], node);
+/**
+ * Delete an entire circular root/child list recursively.
+ */
+void FineGrainedFibHeap::destroy_tree_list(FibNode* start) {
+    if (start == nullptr) {
+        return;
+    }
+
+    std::vector<FibNode*> nodes;
+    FibNode* current = start;
+    do {
+        nodes.push_back(current);
+        current = current->right;
+    } while (current != start);
+
+    for (FibNode* node : nodes) {
+        if (node->child != nullptr) {
+            destroy_tree_list(node->child);
+        }
+        delete node;
+    }
 }
 
+/**
+ * Delete all roots, their descendants, and the dummy section ring.
+ */
 void FineGrainedFibHeap::destroy_all() {
     if (dummy_list_.empty() || dummy_list_[0] == nullptr) {
         return;
@@ -96,10 +130,7 @@ void FineGrainedFibHeap::destroy_all() {
 
     for (FibNode* node : nodes) {
         if (node->child != nullptr) {
-            std::vector<FibNode*> children = detach_children(node->child);
-            for (FibNode* child : children) {
-                delete child;
-            }
+            destroy_tree_list(node->child);
         }
         delete node;
     }
@@ -126,7 +157,7 @@ void FineGrainedFibHeap::resize_handle_table(int handle_id) {
 }
 
 /**
- * Update the version of this handle id
+ * Update the version of this handle id in generation lookup table
  */
 void FineGrainedFibHeap::register_inserted_handle_node(FibNode* node) {
     if (node == nullptr || node->handle_id < 0) {
@@ -144,7 +175,8 @@ void FineGrainedFibHeap::register_inserted_handle_node(FibNode* node) {
 FibNode* FineGrainedFibHeap::insert(FibNode* node) {
     const size_t section_index = get_random_index();
     std::lock_guard<std::mutex> section_lock(dummy_list_locks_[section_index]);
-    insert_into_section(section_index, node);
+    node->section_index = static_cast<int>(section_index);
+    insert_after(dummy_list_[section_index], node);
     register_inserted_handle_node(node);
     size_.fetch_add(1);
     return node;
@@ -152,6 +184,10 @@ FibNode* FineGrainedFibHeap::insert(FibNode* node) {
 
 // ===== decreaseKey-related methods =====
 
+/**
+ * DecreaseKey is implemented as reinsertion
+ * Insert a node with the same id and new value will retire the old one
+ */
 void FineGrainedFibHeap::decreaseKey(int handle_id, int newVal) {
     int next_generation = 0;
     {
@@ -173,6 +209,7 @@ void FineGrainedFibHeap::decreaseKey(int handle_id, int newVal) {
 // ===== deleteMin-related methods =====
 
 void FineGrainedFibHeap::detach_from_list(FibNode* node) {
+    // Rmove from sibling linkedlist
     node->left->right = node->right;
     node->right->left = node->left;
     node->left = node;
@@ -181,6 +218,7 @@ void FineGrainedFibHeap::detach_from_list(FibNode* node) {
 
 /**
  * Determine whether or not this node is stale (has smaller version num)
+ * If the node is stale, we retire it silently when deleteMin
  */
 bool FineGrainedFibHeap::is_current_version(FibNode* node) const {
     if (node == nullptr || node->handle_id < 0) {
@@ -237,7 +275,10 @@ std::vector<FibNode*> FineGrainedFibHeap::detach_children(FibNode* child_start) 
     return children;
 }
 
-std::vector<FibNode*> FineGrainedFibHeap::collect_section_roots(size_t section_index) {
+/**
+ * Get a list of roots in a given section
+ */
+std::vector<FibNode*> FineGrainedFibHeap::take_section_roots(size_t section_index) {
     std::vector<FibNode*> roots;
     FibNode* section_dummy = dummy_list_[section_index];
     FibNode* section_end = dummy_list_[(section_index + 1) % dummy_list_.size()];
@@ -251,35 +292,30 @@ std::vector<FibNode*> FineGrainedFibHeap::collect_section_roots(size_t section_i
         }
         current = next;
     }
-    return roots;
-}
-
-/**
- * Restore a section dummy node so it represents an empty section boundary.
- */
-void FineGrainedFibHeap::clear_section(size_t section_index) {
     const size_t n = dummy_list_.size();
-    FibNode* current = dummy_list_[section_index];
-    current->left = dummy_list_[(section_index + n - 1) % n];
-    current->right = dummy_list_[(section_index + 1) % n];
+    section_dummy->left = dummy_list_[(section_index + n - 1) % n];
+    section_dummy->right = section_end;
+    return roots;
 }
 
 /**
  * Remove and return one valid candidate from the promising list.
  */
 FibNode* FineGrainedFibHeap::try_take_promising_node() {
+    // Promising list is a globally shared resource, hold a mutex lock
     std::lock_guard<std::mutex> promising_lock(promising_mutex_);
     if (promising_list_.empty()) {
         return nullptr;
     }
 
     for (size_t offset = 0; offset < promising_list_.size(); ++offset) {
-        const size_t index = (extract_cursor_ + offset) % promising_list_.size();
+        const size_t index = (promising_pointer_ + offset) % promising_list_.size();
         FibNode* candidate = promising_list_[index];
         if (candidate != nullptr && candidate->parent == nullptr && candidate->section_index >= 0) {
+            // Get a valid candidate, detach it from promising list
             promising_list_[index] = nullptr;
             candidate->in_promising = false;
-            extract_cursor_ = (index + 1) % promising_list_.size();
+            promising_pointer_ = (index + 1) % promising_list_.size();
             return candidate;
         }
         if (candidate != nullptr) {
@@ -305,18 +341,23 @@ void FineGrainedFibHeap::invalidate_promising_node(FibNode* node) {
 
 /**
  * Fill up promising list with small nodes from random sections
+ * First find all empty slots in the list, then fill them
  */
 void FineGrainedFibHeap::spill_over() {
+    // The promising list is shared across all threads, so refill is serialized
+    // under one mutex.
     std::lock_guard<std::mutex> promising_lock(promising_mutex_);
-    // 3PLS, same as the paper
+    // Keep the list at 3 * PLS, following the paper's candidate-pool layout.
     if (promising_list_.size() < promising_list_size_ * 3) {
         promising_list_.assign(promising_list_size_ * 3, nullptr);
     }
 
+    // First clean out dead entries and remember which slots need refilling.
     std::vector<size_t> empty_slots;
     empty_slots.reserve(promising_list_.size());
     for (size_t i = 0; i < promising_list_.size(); ++i) {
         FibNode* candidate = promising_list_[i];
+        // A candidate is no longer usable if it vanished, stopped being a root, or was detached from every section.
         if (candidate == nullptr || candidate->parent != nullptr || candidate->section_index < 0) {
             if (candidate != nullptr) {
                 candidate->in_promising = false;
@@ -330,14 +371,15 @@ void FineGrainedFibHeap::spill_over() {
         return;
     }
 
+    // Maintain a list of best roots found in this pass.
     std::vector<FibNode*> in_progress;
     in_progress.reserve(empty_slots.size());
 
     const size_t sections_to_scan =
         std::min(dummy_list_.size(), spill_sections_per_pass_);
-    // Scan over some sections and get min nodes from there
+    // Scan only some sections
     for (size_t offset = 0; offset < sections_to_scan; ++offset) {
-        const size_t section_index = (spill_cursor_ + offset) % dummy_list_.size();
+        const size_t section_index = (spill_section_pointer_ + offset) % dummy_list_.size();
         std::lock_guard<std::mutex> section_lock(dummy_list_locks_[section_index]);
 
         FibNode* section_dummy = dummy_list_[section_index];
@@ -350,12 +392,14 @@ void FineGrainedFibHeap::spill_over() {
                 current->section_index == static_cast<int>(section_index) &&
                 !current->in_promising &&
                 std::find(in_progress.begin(), in_progress.end(), current) == in_progress.end()) {
+                // insert this root into the local candidate list in sorted order.
                 auto pos = std::lower_bound(
                     in_progress.begin(), in_progress.end(), current,
                     [](const FibNode* a, const FibNode* b) {
                         return a->value < b->value;
                     });
                 in_progress.insert(pos, current);
+                // drop the current largest one if the list grows too much.
                 if (in_progress.size() > empty_slots.size()) {
                     in_progress.pop_back();
                 }
@@ -364,15 +408,17 @@ void FineGrainedFibHeap::spill_over() {
         }
     }
 
-    spill_cursor_ = (spill_cursor_ + sections_to_scan) % dummy_list_.size();
+    // Advance the rotating section scan so the next refill starts elsewhere.
+    spill_section_pointer_ = (spill_section_pointer_ + sections_to_scan) % dummy_list_.size();
 
+    // Push found roots empty slots.
     const size_t fill_count = std::min(in_progress.size(), empty_slots.size());
     for (size_t i = 0; i < fill_count; ++i) {
         promising_list_[empty_slots[i]] = in_progress[i];
         in_progress[i]->in_promising = true;
     }
     if (!promising_list_.empty()) {
-        extract_cursor_ %= promising_list_.size();
+        promising_pointer_ %= promising_list_.size();
     }
 }
 
@@ -399,9 +445,10 @@ void FineGrainedFibHeap::link(FibNode* y, FibNode* x) {
  * back into the same section.
  */
 void FineGrainedFibHeap::consolidate_section(size_t section_index) {
+    // section lock
     std::lock_guard<std::mutex> section_lock(dummy_list_locks_[section_index]);
-    std::vector<FibNode*> roots = collect_section_roots(section_index);
-    clear_section(section_index);
+    // get root list and clear section
+    std::vector<FibNode*> roots = take_section_roots(section_index);
 
     if (roots.empty()) {
         return;
@@ -437,7 +484,8 @@ void FineGrainedFibHeap::consolidate_section(size_t section_index) {
         // Reinsert the merged roots so later spill-over can see them.
         root->parent = nullptr;
         root->marked = false;
-        insert_into_section(section_index, root);
+        root->section_index = static_cast<int>(section_index);
+        insert_after(dummy_list_[section_index], root);
     }
 }
 
@@ -446,7 +494,8 @@ void FineGrainedFibHeap::consolidate_random_section() {
         return;
     }
     consolidate_section(get_random_index());
-    extracts_since_consolidate_ = 0;
+    // Reset counter
+    deletes_since_consolidate_ = 0;
 }
 
 /**
@@ -484,8 +533,6 @@ DeleteMinResult FineGrainedFibHeap::deleteMin() {
         }
 
         invalidate_promising_node(z);
-        // A structurally valid root can still be an obsolete version that
-        // was superseded by a later decreaseKey reinsertion.
         const bool stale_version = !is_current_version(z);
 
         if (z->section_index < 0) {
@@ -498,8 +545,7 @@ DeleteMinResult FineGrainedFibHeap::deleteMin() {
             std::lock_guard<std::mutex> z_section_lock(dummy_list_locks_[z_section_index]);
 
             if (z->child != nullptr) {
-                // Children become new roots and are redistributed across
-                // sections instead of being appended to one global root list.
+                // Children become new roots
                 std::vector<FibNode*> children = detach_children(z->child);
                 z->child = nullptr;
                 z->degree = 0;
@@ -507,10 +553,12 @@ DeleteMinResult FineGrainedFibHeap::deleteMin() {
                 for (FibNode* child : children) {
                     const size_t section_index = get_random_index();
                     if (section_index == z_section_index) {
-                        insert_into_section(section_index, child);
+                        child->section_index = static_cast<int>(section_index);
+                        insert_after(dummy_list_[section_index], child);
                     } else {
                         std::lock_guard<std::mutex> section_lock(dummy_list_locks_[section_index]);
-                        insert_into_section(section_index, child);
+                        child->section_index = static_cast<int>(section_index);
+                        insert_after(dummy_list_[section_index], child);
                     }
                 }
             }
@@ -534,18 +582,16 @@ DeleteMinResult FineGrainedFibHeap::deleteMin() {
         bool need_spill = false;
 
         if (size() == 0) {
-            // Once no physical nodes remain, the auxiliary candidate state can
-            // be reset immediately.
             std::fill(promising_list_.begin(), promising_list_.end(), nullptr);
-            extract_cursor_ = 0;
-            extracts_since_consolidate_ = 0;
+            promising_pointer_ = 0;
+            deletes_since_consolidate_ = 0;
             return result;
         }
 
         // Periodic consolidation repairs local degree structure; spill-over
         // refills the candidate pool when too few live candidates remain.
-        ++extracts_since_consolidate_;
-        if (extracts_since_consolidate_ >= promising_list_size_) {
+        ++deletes_since_consolidate_;
+        if (deletes_since_consolidate_ >= promising_list_size_) {
             need_consolidate = true;
         }
 
@@ -565,7 +611,7 @@ DeleteMinResult FineGrainedFibHeap::deleteMin() {
             spill_over();
         } else if (need_consolidate) {
             consolidate_random_section();
-            extracts_since_consolidate_ = 0;
+            deletes_since_consolidate_ = 0;
         }
 
         return result;

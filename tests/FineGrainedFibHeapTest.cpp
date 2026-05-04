@@ -2,98 +2,136 @@
 
 #include <cassert>
 #include <iostream>
-#include <stdexcept>
 #include <thread>
 #include <vector>
+#include <algorithm>
 
 namespace {
 
-void test_parallel_insert_updates_size() {
+void join_all(std::vector<std::thread>& threads) {
+    for (std::thread& t : threads) {
+        t.join();
+    }
+}
+
+/**
+ * Insert some nodes in parallel and delete all, and verify that every inserted
+ * value is removed once while each thread observes a locally increasing
+ * deleteMin sequence.
+ */
+void test_parallel_insert_then_drain() {
     FineGrainedFibHeap heap;
 
+    // 400 ops in 4 threads
     constexpr int kThreads = 4;
     constexpr int kValuesPerThread = 100;
-    std::vector<std::thread> workers;
-    workers.reserve(kThreads);
+    constexpr int kTotalValues = kThreads * kValuesPerThread;
+
+    std::vector<std::thread> threads;
+    threads.reserve(kThreads);
 
     for (int tid = 0; tid < kThreads; ++tid) {
-        workers.emplace_back([&heap, tid]() {
+        threads.emplace_back([&heap, tid]() {
             const int base = tid * kValuesPerThread;
             for (int i = 0; i < kValuesPerThread; ++i) {
                 heap.insert(new FibNode(base + i, base + i));
             }
         });
     }
+    join_all(threads);
 
-    for (std::thread& worker : workers) {
-        worker.join();
-    }
+    assert(heap.size() == static_cast<size_t>(kTotalValues));
 
-    assert(heap.size() == static_cast<size_t>(kThreads * kValuesPerThread));
-    assert(!heap.isEmpty());
-}
+    std::vector<std::vector<int>> buckets(kThreads);
+    threads.clear();
 
-void test_relaxed_delete_min_drains_heap() {
-    FineGrainedFibHeap heap;
-
-    constexpr int kValues = 64;
-    for (int i = 0; i < kValues; ++i) {
-        heap.insert(new FibNode(kValues - i, i));
-    }
-
-    int deleted = 0;
-    while (true) {
-        try {
-            DeleteMinResult result = heap.deleteMin();
-            assert(result.handle_id >= 0);
-            deleted++;
-        } catch (const std::runtime_error&) {
-            break;
-        }
-    }
-
-    assert(deleted == kValues);
-    assert(heap.isEmpty());
-    assert(heap.size() == 0);
-}
-
-void test_handle_based_decrease_key_reinsertion() {
-    FineGrainedFibHeap heap;
-
-    FibNode* a = heap.insert(new FibNode(100, 0));
-    (void)a;
-    heap.insert(new FibNode(200, 1));
-    heap.insert(new FibNode(300, 2));
-
-    heap.decreaseKey(1, 50);
-
-    bool saw_handle_one = false;
-    int deletes = 0;
-    while (true) {
-        try {
-            DeleteMinResult result = heap.deleteMin();
-            if (result.handle_id == 1) {
-                assert(!saw_handle_one);
-                assert(result.value == 50);
-                saw_handle_one = true;
+    for (int tid = 0; tid < kThreads; ++tid) {
+        threads.emplace_back([&heap, &buckets, tid]() {
+            while (true) {
+                try {
+                    buckets[tid].push_back(heap.deleteMin().value);
+                } catch (const std::runtime_error&) {
+                    break;
+                }
             }
-            deletes++;
-        } catch (const std::runtime_error&) {
-            break;
+        });
+    }
+    join_all(threads);
+
+    std::vector<bool> seen(kTotalValues, false);
+    int removed = 0;
+
+    for (const std::vector<int>& bucket : buckets) {
+        for (size_t i = 0; i < bucket.size(); ++i) {
+            if (i > 0) {
+                assert(bucket[i - 1] < bucket[i]);
+            }
+            const int value = bucket[i];
+            assert(value >= 0);
+            assert(value < kTotalValues);
+            assert(!seen[value]);
+            seen[value] = true;
+            removed++;
         }
     }
 
-    assert(saw_handle_one);
-    assert(deletes == 3);
+    assert(removed == kTotalValues);
+    for (bool was_seen : seen) {
+        assert(was_seen);
+    }
+    assert(heap.isEmpty());
+}
+
+/**
+* Fill the heap with random nodes, and then do random decreaseKey in
+* parallel, and then check that the new minimum is visible and the final
+* deleteMin order remains nondecreasing.
+*/
+void test_parallel_decrease_keys() {
+    FineGrainedFibHeap heap;
+
+    constexpr int kThreads = 4;
+    constexpr int kHandlesPerThread = 100;
+    constexpr int kTotalHandles = kThreads * kHandlesPerThread;
+
+    for (int i = 0; i < kTotalHandles; ++i) {
+        heap.insert(new FibNode(1000 + i, i));
+    }
+
+    std::vector<std::thread> threads;
+    threads.reserve(kThreads);
+
+    for (int tid = 0; tid < kThreads; ++tid) {
+        threads.emplace_back([&heap, tid]() {
+            const int begin = tid * kHandlesPerThread;
+            const int end = begin + kHandlesPerThread;
+            for (int i = begin; i < end; ++i) {
+                heap.decreaseKey(i, -(i + 1));
+            }
+        });
+    }
+    join_all(threads);
+
+    assert(heap.size() == static_cast<size_t>(kTotalHandles));
+
+    DeleteMinResult first = heap.deleteMin();
+    assert(first.value == -kTotalHandles);
+
+    int previous = first.value;
+    for (int count = 1; count < kTotalHandles; ++count) {
+        const int current = heap.deleteMin().value;
+        assert(previous <= current);
+        previous = current;
+    }
+
     assert(heap.isEmpty());
 }
 
 }  // namespace
 
 int main() {
-    test_parallel_insert_updates_size();
-    test_relaxed_delete_min_drains_heap();
-    test_handle_based_decrease_key_reinsertion();
+    test_parallel_insert_then_drain();
+    test_parallel_decrease_keys();
 
     std::cout << "FineGrainedFibHeap tests passed.\n";
     return 0;

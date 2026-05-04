@@ -15,7 +15,9 @@
 
 namespace {
 
+// Additional warmup
 constexpr int kWarmupInserts = 5000;
+// Magic Number
 constexpr int dummyNodeNum = 1024;
 
 enum class ImplType {
@@ -51,6 +53,7 @@ struct Operation {
 struct GeneratedWorkload {
     std::vector<Operation> warmup_ops;
     std::vector<Operation> ops;
+    // # of decreaseKey
     int protected_handle_count = 0;
 };
 
@@ -62,16 +65,6 @@ struct BenchmarkResult {
     int decrease_ops = 0;
     long long delete_value_sum = 0;
 };
-
-void print_usage(const char* program_name) {
-    std::cerr
-        << "Usage: " << program_name
-        << " --impl <coarse|fine>"
-        << " --threads N"
-        << " --ops N"
-        << " --seed N"
-        << " --workload <insert_ratio> <delete_ratio> <decrease_ratio>\n";
-}
 
 BenchmarkConfig parse_args(int argc, char** argv) {
     BenchmarkConfig config;
@@ -132,14 +125,21 @@ BenchmarkConfig parse_args(int argc, char** argv) {
     return config;
 }
 
+/**
+ * Generate operations based on given distribution
+ * Generate a warmup set to avoid illegal decreaseKey, [2000000, 3000000]
+ * DeleteMin will never hit this portion, decareseKey will randomly decrease their values
+ */
 GeneratedWorkload generate_workload(const BenchmarkConfig& config) {
     GeneratedWorkload workload;
     std::vector<Operation>& ops = workload.ops;
     ops.reserve(static_cast<size_t>(config.ops));
 
+    // Amount of each type operations is fixed
     const int insertTarget = static_cast<int>(config.insertLoad * config.ops);
     const int deleteTarget = static_cast<int>(config.deleteLoad * config.ops);
     const int decreaseTarget = config.ops - insertTarget - deleteTarget;
+    // Number of alive nodes
     int live_count = kWarmupInserts + decreaseTarget;
     int next_decrease_value = 1'999'999;
     int insertRemaining = insertTarget;
@@ -147,6 +147,7 @@ GeneratedWorkload generate_workload(const BenchmarkConfig& config) {
     int decreaseRemaining = decreaseTarget;
 
     std::mt19937 rng(config.seed);
+    // Could be deleted node in: range 0 - 1000000
     std::uniform_int_distribution<int> valueDist(1, 1'000'000);
     std::vector<int> random_decrease_handles;
     random_decrease_handles.reserve(static_cast<size_t>(decreaseTarget));
@@ -192,14 +193,18 @@ GeneratedWorkload generate_workload(const BenchmarkConfig& config) {
     }
 
     std::vector<Operation>& warmup_ops = workload.warmup_ops;
+    // Our warmup consists of normal warmup (5000) + decreasewarmup (ensure legal ops)
     const int protectedWarmupCount = kWarmupInserts + decreaseTarget;
     warmup_ops.reserve(static_cast<size_t>(protectedWarmupCount));
     workload.protected_handle_count = decreaseTarget;
 
     for (int i = 0; i < kWarmupInserts; ++i) {
+        // normal warmup shares the same random distribution as other insert
         warmup_ops.push_back(Operation{OpType::Insert, valueDist(rng), -1, -1});
     }
     for (int i = 0; i < decreaseTarget; ++i) {
+        // Special large insert, ensure our decreaseTarget is not deleted by deleteMin
+        // deleteMin will consume normal insert only
         warmup_ops.push_back(Operation{OpType::Insert, 2'000'000 + i, i, -1});
     }
 
@@ -244,11 +249,12 @@ BenchmarkResult run_parallel(
     std::vector<BenchmarkResult> thread_results(static_cast<size_t>(threads));
 
     for (const Operation& op : workload.warmup_ops) {
+        // Warmup insert
         (void)heap.insert(new FibNode(op.value, op.handle_id));
     }
 
     const auto start = std::chrono::steady_clock::now();
-
+    // Static Assignment to minimize overhead
     for (int tid = 0; tid < threads; ++tid) {
         workers.emplace_back([&, tid]() {
             BenchmarkResult& local_result = thread_results[static_cast<size_t>(tid)];
@@ -356,7 +362,6 @@ int main(int argc, char** argv) {
         print_result(config, result);
         return 0;
     } catch (const std::exception& ex) {
-        print_usage(argv[0]);
         std::cerr << "Error: " << ex.what() << '\n';
         return 1;
     }
